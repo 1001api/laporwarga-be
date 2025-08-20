@@ -1,0 +1,39 @@
+version: "2"
+sql:
+  - engine: "postgresql"
+    schema: "internal/database/migrations"
+    queries: "internal/database/queries"
+    gen:
+      go:
+        sql_package: "pgx/v5"
+        out: "internal/database/generated"
+        package: "db"
+        emit_json_tags: true
+        emit_db_tags: true
+        json_tags_case_style: "snake"
+        emit_prepared_queries: true
+        emit_interface: true
+        emit_exact_table_names: false
+        emit_empty_slices: true
+
+        output_db_file_name: "db_gen.go"
+        output_models_file_name: "models_gen.go"
+        output_querier_file_name: "querier_gen.go"
+        output_files_suffix: "_gen"
+        
+        overrides:
+          - db_type: "uuid"
+            go_type:
+              import: "github.com/google/uuid"
+              type: "UUID"
+
+          - db_type: "timestamptz"
+            go_type:
+              import: "time"
+              type: "Time"
+          
+          # JSON handling
+          - db_type: "jsonb"
+            go_type:
+              import: "encoding/json"
+              type: "RawMessage"

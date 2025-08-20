@@ -1,0 +1,88 @@
+package users
+
+import (
+	"context"
+	db "hubku/lapor_warga_be_v2/internal/database/generated"
+
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
+)
+
+type UserRepository interface {
+	IncrementFailedLogins(id uuid.UUID) error
+	CheckUserExists(arg db.CheckUserExistsParams) (bool, error)
+	CreateUser(req db.CreateUserParams) (db.CreateUserRow, error)
+	GetUsers(arg db.GetUsersParams) ([]db.GetUsersRow, error)
+	UpdateUser(arg db.UpdateUserParams) error
+	DeleteUser(id uuid.UUID) error
+	RestoreUser(id uuid.UUID) error
+	UpdateLastLogin(id uuid.UUID) error
+	SearchUser(arg db.SearchUserParams) ([]db.SearchUserRow, error)
+	GetUserByIdentifier(arg db.GetUserByIdentifierParams) (db.GetUserByIdentifierRow, error)
+	GetUserByID(id uuid.UUID) (db.GetUserByIDRow, error)
+}
+
+type repository struct {
+	encKey  string
+	queries *db.Queries
+}
+
+func NewUserRepository(pool *pgxpool.Pool, encKey string) UserRepository {
+	return &repository{
+		queries: db.New(pool),
+		encKey:  encKey,
+	}
+}
+
+func (r *repository) GetUsers(arg db.GetUsersParams) ([]db.GetUsersRow, error) {
+	arg.Key = r.encKey
+	return r.queries.GetUsers(context.Background(), arg)
+}
+
+func (r *repository) CreateUser(arg db.CreateUserParams) (db.CreateUserRow, error) {
+	arg.Key = r.encKey
+	return r.queries.CreateUser(context.Background(), arg)
+}
+
+func (r *repository) UpdateUser(arg db.UpdateUserParams) error {
+	arg.Key = r.encKey
+	return r.queries.UpdateUser(context.Background(), arg)
+}
+
+func (r *repository) UpdateLastLogin(id uuid.UUID) error {
+	return r.queries.UpdateLastLogin(context.Background(), id)
+}
+
+func (r *repository) IncrementFailedLogins(id uuid.UUID) error {
+	return r.queries.IncrementFailedLoginCount(context.Background(), id)
+}
+
+func (r *repository) CheckUserExists(arg db.CheckUserExistsParams) (bool, error) {
+	arg.Key = r.encKey
+	return r.queries.CheckUserExists(context.Background(), arg)
+}
+
+func (r *repository) DeleteUser(id uuid.UUID) error {
+	return r.queries.DeleteUser(context.Background(), id)
+}
+
+func (r *repository) RestoreUser(id uuid.UUID) error {
+	return r.queries.RestoreUser(context.Background(), id)
+}
+
+func (r *repository) SearchUser(arg db.SearchUserParams) ([]db.SearchUserRow, error) {
+	arg.Key = r.encKey
+	return r.queries.SearchUser(context.Background(), arg)
+}
+
+func (r *repository) GetUserByIdentifier(arg db.GetUserByIdentifierParams) (db.GetUserByIdentifierRow, error) {
+	arg.Key = r.encKey
+	return r.queries.GetUserByIdentifier(context.Background(), arg)
+}
+
+func (r *repository) GetUserByID(id uuid.UUID) (db.GetUserByIDRow, error) {
+	return r.queries.GetUserByID(context.Background(), db.GetUserByIDParams{
+		ID:  id,
+		Key: r.encKey,
+	})
+}
