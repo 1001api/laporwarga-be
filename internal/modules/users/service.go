@@ -2,7 +2,6 @@ package users
 
 import (
 	"errors"
-	"fmt"
 	db "hubku/lapor_warga_be_v2/internal/database/generated"
 	userroles "hubku/lapor_warga_be_v2/internal/modules/user_roles"
 	"hubku/lapor_warga_be_v2/pkg"
@@ -40,6 +39,25 @@ func NewUserService(repo UserRepository, roleRepo userroles.UserRolesRepository,
 		roleRepo: roleRepo,
 		enckey:   []byte(encKey),
 	}
+}
+
+func (s *service) decryptFields(encEmail, encFullname, encPhone []byte) ([]byte, []byte, []byte, error) {
+	email, err := pkg.Decrypt(encEmail, s.enckey)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	fullname, err := pkg.Decrypt(encFullname, s.enckey)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	phone, err := pkg.Decrypt(encPhone, s.enckey)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	return email, fullname, phone, nil
 }
 
 func (s *service) InitializeRootUser() error {
@@ -89,27 +107,17 @@ func (s *service) GetUsers(arg db.GetUsersParams) ([]UserProfileResponse, error)
 	var res []UserProfileResponse
 
 	for _, user := range result {
-		decryptedEmail, err := pkg.Decrypt(user.Email, s.enckey)
+		de, df, dp, err := s.decryptFields(user.Email, user.Fullname, user.Phone)
 		if err != nil {
 			return nil, err
 		}
 
-		decryptedFullName, err := pkg.Decrypt(user.Fullname, s.enckey)
-		if err != nil {
-			return nil, err
-		}
-
-		decryptedPhone, err := pkg.Decrypt(user.Phone, s.enckey)
-		if err != nil {
-			return nil, err
-		}
-
-		user := UserProfileResponse{
+		res = append(res, UserProfileResponse{
 			ID:               user.ID,
 			Username:         user.Username,
-			Email:            string(decryptedEmail),
-			Fullname:         string(decryptedFullName),
-			Phone:            string(decryptedPhone),
+			Email:            string(de),
+			Fullname:         string(df),
+			Phone:            string(dp),
 			Role:             user.Role.String,
 			CredibilityScore: int(user.CredibilityScore.Int16),
 			Status:           user.Status.String,
@@ -118,9 +126,7 @@ func (s *service) GetUsers(arg db.GetUsersParams) ([]UserProfileResponse, error)
 			IsEmailVerified:  user.IsEmailVerified.Bool,
 			IsPhoneVerified:  user.IsPhoneVerified.Bool,
 			LastLoginAt:      user.LastLoginAt,
-		}
-
-		res = append(res, user)
+		})
 	}
 
 	return res, nil
@@ -160,10 +166,12 @@ func (s *service) CreateUser(params CreateUserRequest) (uuid.UUID, error) {
 	if err != nil {
 		return uuid.UUID{}, err
 	}
+
 	fullnameEnc, err := pkg.Encrypt([]byte(params.FullName), s.enckey)
 	if err != nil {
 		return uuid.UUID{}, err
 	}
+
 	phoneEnc, err := pkg.Encrypt([]byte(params.PhoneNumber), s.enckey)
 	if err != nil {
 		return uuid.UUID{}, err
@@ -183,8 +191,6 @@ func (s *service) CreateUser(params CreateUserRequest) (uuid.UUID, error) {
 		return uuid.UUID{}, err
 	}
 
-	fmt.Println("created user:", userID)
-
 	if err := s.roleRepo.CreateUserRole(db.CreateUserRoleParams{
 		UserID:    userID,
 		RoleType:  params.Role,
@@ -197,24 +203,39 @@ func (s *service) CreateUser(params CreateUserRequest) (uuid.UUID, error) {
 }
 
 func (s *service) UpdateUser(targetID uuid.UUID, updatedBy uuid.UUID, req UpdateUserRequest) error {
+	current, err := s.GetUserByID(targetID)
+	if err != nil {
+		log.Println("Failed to get user for update:", err)
+		return err
+	}
+
 	exists, err := s.CheckUserExists(req.Email, req.Username)
 	if err != nil {
 		log.Println("Failed to check user exists:", err)
 		return err
 	}
 
-	fmt.Println("exists:", exists, req.PhoneNumber)
-
-	if exists {
+	if exists && (req.Email != current.Email || req.Username != current.Username) {
 		return errors.New("username or email already exists")
 	}
 
 	fullnameHash := pkg.HashValue(req.FullName)
 	emailHash := pkg.HashValue(req.Email)
 	phoneHash := pkg.HashValue(req.PhoneNumber)
-	emailEnc, _ := pkg.Encrypt([]byte(req.Email), s.enckey)
-	fullnameEnc, _ := pkg.Encrypt([]byte(req.FullName), s.enckey)
-	phoneEnc, _ := pkg.Encrypt([]byte(req.PhoneNumber), s.enckey)
+
+	emailEnc, err := pkg.Encrypt([]byte(req.Email), s.enckey)
+	if err != nil {
+		return err
+	}
+
+	fullnameEnc, err := pkg.Encrypt([]byte(req.FullName), s.enckey)
+	if err != nil {
+		return err
+	}
+	phoneEnc, err := pkg.Encrypt([]byte(req.PhoneNumber), s.enckey)
+	if err != nil {
+		return err
+	}
 
 	return s.repo.UpdateUser(db.UpdateUserParams{
 		Username:     req.Username,
@@ -259,27 +280,17 @@ func (s *service) SearchUser(query string, page, limit int32) ([]UserProfileResp
 	var res []UserProfileResponse
 
 	for _, user := range results {
-		decryptedEmail, err := pkg.Decrypt(user.Email, s.enckey)
+		de, df, dp, err := s.decryptFields(user.Email, user.Fullname, user.Phone)
 		if err != nil {
 			return nil, err
 		}
 
-		decryptedFullName, err := pkg.Decrypt(user.Fullname, s.enckey)
-		if err != nil {
-			return nil, err
-		}
-
-		decryptedPhone, err := pkg.Decrypt(user.Phone, s.enckey)
-		if err != nil {
-			return nil, err
-		}
-
-		user := UserProfileResponse{
+		res = append(res, UserProfileResponse{
 			ID:               user.ID,
 			Username:         user.Username,
-			Email:            string(decryptedEmail),
-			Fullname:         string(decryptedFullName),
-			Phone:            string(decryptedPhone),
+			Email:            string(de),
+			Fullname:         string(df),
+			Phone:            string(dp),
 			Role:             user.Role.String,
 			CredibilityScore: int(user.CredibilityScore.Int16),
 			Status:           user.Status.String,
@@ -288,13 +299,10 @@ func (s *service) SearchUser(query string, page, limit int32) ([]UserProfileResp
 			IsEmailVerified:  user.IsEmailVerified.Bool,
 			IsPhoneVerified:  user.IsPhoneVerified.Bool,
 			LastLoginAt:      user.LastLoginAt,
-		}
-
-		res = append(res, user)
+		})
 	}
 
 	return res, nil
-
 }
 
 func (s *service) GetUserByIdentifier(identifier string) (db.GetUserByIdentifierRow, error) {
@@ -305,28 +313,18 @@ func (s *service) GetUserByIdentifier(identifier string) (db.GetUserByIdentifier
 		EmailHash: pkg.HashValue(identifier),
 		Username:  identifier,
 	})
-
 	if err != nil {
 		return db.GetUserByIdentifierRow{}, err
 	}
 
-	decryptedEmail, err := pkg.Decrypt(user.Email, s.enckey)
+	de, df, dp, err := s.decryptFields(user.Email, user.Fullname, user.Phone)
 	if err != nil {
 		return db.GetUserByIdentifierRow{}, err
 	}
-	user.Email = decryptedEmail
 
-	decryptedFullName, err := pkg.Decrypt(user.Fullname, s.enckey)
-	if err != nil {
-		return db.GetUserByIdentifierRow{}, err
-	}
-	user.Fullname = decryptedFullName
-
-	decryptedPhone, err := pkg.Decrypt(user.Phone, s.enckey)
-	if err != nil {
-		return db.GetUserByIdentifierRow{}, err
-	}
-	user.Phone = decryptedPhone
+	user.Email = de
+	user.Fullname = df
+	user.Phone = dp
 
 	return user, nil
 }
@@ -337,30 +335,17 @@ func (s *service) GetUserByID(id uuid.UUID) (UserProfileResponse, error) {
 		return UserProfileResponse{}, err
 	}
 
-	decryptedEmail, err := pkg.Decrypt(user.Email, s.enckey)
+	de, df, dp, err := s.decryptFields(user.Email, user.Fullname, user.Phone)
 	if err != nil {
 		return UserProfileResponse{}, err
 	}
-	user.Email = decryptedEmail
-
-	decryptedFullName, err := pkg.Decrypt(user.Fullname, s.enckey)
-	if err != nil {
-		return UserProfileResponse{}, err
-	}
-	user.Fullname = decryptedFullName
-
-	decryptedPhone, err := pkg.Decrypt(user.Phone, s.enckey)
-	if err != nil {
-		return UserProfileResponse{}, err
-	}
-	user.Phone = decryptedPhone
 
 	return UserProfileResponse{
 		ID:               user.ID,
 		Username:         user.Username,
-		Email:            string(decryptedEmail),
-		Fullname:         string(decryptedFullName),
-		Phone:            string(decryptedPhone),
+		Email:            string(de),
+		Fullname:         string(df),
+		Phone:            string(dp),
 		Role:             user.Role.String,
 		CredibilityScore: int(user.CredibilityScore.Int16),
 		Status:           user.Status.String,
