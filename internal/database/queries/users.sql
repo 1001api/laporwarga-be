@@ -1,46 +1,47 @@
 -- name: GetUsers :many
-SELECT 
+SELECT
     u.id,
-    u.email_enc as email,
-    u.fullname_enc as fullname,
-    u.phone_enc as phone,
+    u.email_enc AS email,
+    u.fullname_enc AS fullname,
+    u.phone_enc AS phone,
     u.username,
-    ur.role_type AS role,
+    r.name AS role_name,
     u.credibility_score,
     u.status,
-    u.is_email_verified, 
+    u.is_email_verified,
     u.is_phone_verified,
     u.last_login_at,
     u.created_at,
     u.last_updated_at AS updated_at
 FROM users u
-LEFT JOIN user_roles ur ON u.id = ur.user_id
-WHERE u.deleted_at IS NULL 
+LEFT JOIN roles r ON u.role_id = r.id AND r.deleted_at IS NULL
+WHERE u.deleted_at IS NULL
 ORDER BY u.created_at DESC
 OFFSET @offset_count LIMIT @limit_count;
 
 -- name: SearchUser :many
-SELECT 
-    u.id, 
+SELECT
+    u.id,
     u.username,
-    u.email_enc as email,
-    u.fullname_enc as fullname,
-    u.phone_enc as phone,
-    ur.role_type AS role,
+    u.email_enc AS email,
+    u.fullname_enc AS fullname,
+    u.phone_enc AS phone,
+    r.name AS role_name,
     u.credibility_score,
     u.status,
-    u.is_email_verified, 
+    u.is_email_verified,
     u.is_phone_verified,
     u.last_login_at,
     u.created_at,
     u.last_updated_at AS updated_at
 FROM users u
-LEFT JOIN user_roles ur ON u.id = ur.user_id
+LEFT JOIN roles r ON u.role_id = r.id AND r.deleted_at IS NULL
 WHERE u.deleted_at IS NULL
-AND (
-    u.id = @id OR
-    u.username ILIKE '%' || @query::text || '%'
-)
+  AND (
+      u.id = @id
+      OR u.username ILIKE '%' || @query::text || '%'
+  )
+ORDER BY u.created_at DESC
 OFFSET @offset_count LIMIT @limit_count;
 
 -- name: CreateUser :one
@@ -52,7 +53,8 @@ INSERT INTO users (
     username,
     password_hash,
     phone_hash,
-    phone_enc
+    phone_enc,
+    role_id
 )
 VALUES (
     @email_hash::text,
@@ -62,7 +64,8 @@ VALUES (
     @username,
     @password_hash::text,
     @phone_hash::text,
-    @phone_enc
+    @phone_enc,
+    @role_id::uuid
 ) RETURNING id;
 
 -- name: UpdateUser :exec
@@ -121,6 +124,18 @@ SET
         THEN @status::text
         ELSE status
     END,
+    role_id = CASE
+        WHEN @role_id::uuid IS NOT NULL
+            AND @role_id::uuid != role_id
+        THEN @role_id::uuid
+        ELSE role_id
+    END,
+    credibility_score = CASE
+        WHEN @credibility_score::smallint IS NOT NULL
+            AND @credibility_score::smallint != credibility_score
+        THEN @credibility_score::smallint
+        ELSE credibility_score
+    END,
     last_updated_at = CASE
         WHEN (
             (@username::text IS NOT NULL AND @username::text != '' AND @username::text != username)
@@ -131,77 +146,86 @@ SET
             OR (@phone_hash::text IS NOT NULL AND @phone_hash::text != '' AND @phone_hash::text != phone_hash)
             OR (@phone_enc::bytea IS NOT NULL AND @phone_enc::bytea != phone_enc)
             OR (@status::text IS NOT NULL AND @status::text != '' AND @status::text != status)
+            OR (@role_id::uuid IS NOT NULL AND @role_id::uuid != role_id)
             OR (@credibility_score::smallint IS NOT NULL AND @credibility_score::smallint != credibility_score)
-        ) THEN NOW()
+        ) THEN CURRENT_TIMESTAMP
         ELSE last_updated_at
     END,
     last_updated_by = @updated_by::uuid
 WHERE id = @id;
 
 -- name: DeleteUser :exec
-UPDATE users 
-SET deleted_at = NOW()
+UPDATE users
+SET 
+    deleted_at = CURRENT_TIMESTAMP,
+    deleted_by = @deleted_by::uuid
 WHERE id = @id;
 
 -- name: RestoreUser :exec
-UPDATE users 
-SET deleted_at = NULL
+UPDATE users
+SET 
+    deleted_at = NULL,
+    deleted_by = NULL
 WHERE id = @id;
 
 -- name: CheckUserExists :one
 SELECT EXISTS (
     SELECT 1
-    FROM users
-    WHERE
-        (@email_hash::text IS NOT NULL AND @email_hash != '' AND email_hash = @email_hash)
-        OR (@username::text IS NOT NULL AND @username != '' AND username = @username)
+    FROM users u
+    WHERE u.deleted_at IS NULL
+      AND (
+          (@email_hash::text IS NOT NULL AND @email_hash != '' AND email_hash = @email_hash)
+          OR (@username::text IS NOT NULL AND @username != '' AND username = @username)
+      )
 ) AS exists;
 
 -- name: GetUserByEmail :one
-SELECT 
+SELECT
     u.id,
     u.username,
-    u.email_enc as email,
-    u.fullname_enc as fullname,
-    u.phone_enc as phone,
-    ur.role_type AS role,
+    u.email_enc AS email,
+    u.fullname_enc AS fullname,
+    u.phone_enc AS phone,
+    r.name AS role_name,
     u.credibility_score,
     u.status,
     u.created_at,
     u.last_updated_at AS updated_at
 FROM users u
-LEFT JOIN user_roles ur ON u.id = ur.user_id
+LEFT JOIN roles r ON u.role_id = r.id AND r.deleted_at IS NULL
 WHERE u.email_hash = @email_hash
+  AND u.deleted_at IS NULL
 LIMIT 1;
 
 -- name: GetUserByID :one
-SELECT 
+SELECT
     u.id,
     u.username,
-    u.email_enc as email,
-    u.fullname_enc as fullname,
-    u.phone_enc as phone,
-    ur.role_type AS role,
+    u.email_enc AS email,
+    u.fullname_enc AS fullname,
+    u.phone_enc AS phone,
+    r.name AS role_name,
     u.credibility_score,
     u.status,
-    u.is_email_verified, 
+    u.is_email_verified,
     u.is_phone_verified,
     u.last_login_at,
     u.created_at,
     u.last_updated_at AS updated_at
 FROM users u
-LEFT JOIN user_roles ur ON u.id = ur.user_id
+LEFT JOIN roles r ON u.role_id = r.id AND r.deleted_at IS NULL
 WHERE u.id = @id
+  AND u.deleted_at IS NULL
 LIMIT 1;
 
 -- name: GetUserByIdentifier :one
-SELECT 
+SELECT
     u.id,
     u.username,
-    u.email_enc as email,
-    u.fullname_enc as fullname,
-    u.phone_enc as phone,
-    ur.role_type AS role,
+    u.email_enc AS email,
+    u.fullname_enc AS fullname,
+    u.phone_enc AS phone,
+    r.name AS role_name,
     u.credibility_score,
     u.status,
     u.password_hash,
@@ -212,19 +236,35 @@ SELECT
     u.created_at,
     u.last_updated_at AS updated_at
 FROM users u
-LEFT JOIN user_roles ur ON u.id = ur.user_id
-WHERE 
-    (u.id = @id)
-    OR (NULLIF(@email_hash, '') IS NOT NULL AND u.email_hash = @email_hash)
-    OR (NULLIF(@username, '') IS NOT NULL AND u.username = @username)
+LEFT JOIN roles r ON u.role_id = r.id AND r.deleted_at IS NULL
+WHERE u.deleted_at IS NULL
+  AND (
+      u.id = @id
+      OR (NULLIF(@email_hash, '') IS NOT NULL AND u.email_hash = @email_hash)
+      OR (NULLIF(@username, '') IS NOT NULL AND u.username = @username)
+  )
 LIMIT 1;
 
 -- name: UpdateLastLogin :exec
-UPDATE users 
-SET last_login_at = NOW()
+UPDATE users
+SET last_login_at = CURRENT_TIMESTAMP
 WHERE id = @id;
 
 -- name: IncrementFailedLoginCount :exec
-UPDATE users 
+UPDATE users
 SET failed_login_attempts = failed_login_attempts + 1
+WHERE id = @id;
+
+-- name: ResetFailedLoginCount :exec
+UPDATE users
+SET 
+    failed_login_attempts = 0,
+    locked_until = NULL
+WHERE id = @id;
+
+-- name: LockUser :exec
+UPDATE users
+SET 
+    locked_until = @locked_until::timestamptz,
+    failed_login_attempts = @failed_attempts::int
 WHERE id = @id;

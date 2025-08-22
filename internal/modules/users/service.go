@@ -20,7 +20,7 @@ type UserService interface {
 	CheckUserExists(email, username string) (bool, error)
 	CreateUser(params CreateUserRequest) (uuid.UUID, error)
 	UpdateUser(targetID uuid.UUID, updatedBy uuid.UUID, req UpdateUserRequest) error
-	DeleteUser(id uuid.UUID) error
+	DeleteUser(id uuid.UUID, deletedBy uuid.UUID) error
 	RestoreUser(id uuid.UUID) error
 	SearchUser(query string, page, limit int32) ([]UserProfileResponse, error)
 	GetUserByIdentifier(identifier string) (db.GetUserByIdentifierRow, error)
@@ -28,16 +28,16 @@ type UserService interface {
 }
 
 type service struct {
-	enckey   []byte
-	repo     UserRepository
-	roleRepo userroles.UserRolesRepository
+	enckey  []byte
+	repo    UserRepository
+	roleSvc userroles.UserRolesService
 }
 
-func NewUserService(repo UserRepository, roleRepo userroles.UserRolesRepository, encKey string) UserService {
+func NewUserService(repo UserRepository, roleSvc userroles.UserRolesService, encKey string) UserService {
 	return &service{
-		repo:     repo,
-		roleRepo: roleRepo,
-		enckey:   []byte(encKey),
+		repo:    repo,
+		roleSvc: roleSvc,
+		enckey:  []byte(encKey),
 	}
 }
 
@@ -118,7 +118,7 @@ func (s *service) GetUsers(arg db.GetUsersParams) ([]UserProfileResponse, error)
 			Email:            string(de),
 			Fullname:         string(df),
 			Phone:            string(dp),
-			Role:             user.Role.String,
+			Role:             user.RoleName.String,
 			CredibilityScore: int(user.CredibilityScore.Int16),
 			Status:           user.Status.String,
 			CreatedAt:        user.CreatedAt,
@@ -177,6 +177,29 @@ func (s *service) CreateUser(params CreateUserRequest) (uuid.UUID, error) {
 		return uuid.UUID{}, err
 	}
 
+	var roleID uuid.UUID
+
+	// check if role exists
+	roleExist, err := s.roleSvc.GetRoleByName(string(pkg.RoleAdmin))
+	if err != nil && !strings.Contains(err.Error(), "no rows in result set") {
+		return uuid.UUID{}, err
+	}
+
+	if roleExist.ID == uuid.Nil {
+		// if role does not exist, create it first
+		createdID, err := s.roleSvc.CreateRole(db.CreateRoleParams{
+			Name:        string(pkg.RoleAdmin),
+			Description: "Default admin role",
+		})
+		if err != nil {
+			return uuid.UUID{}, err
+		}
+
+		roleID = createdID
+	} else {
+		roleID = roleExist.ID
+	}
+
 	userID, err := s.repo.CreateUser(db.CreateUserParams{
 		EmailHash:    emailHash,
 		EmailEnc:     emailEnc,
@@ -186,16 +209,9 @@ func (s *service) CreateUser(params CreateUserRequest) (uuid.UUID, error) {
 		PasswordHash: params.PasswordHash,
 		PhoneHash:    phoneHash,
 		PhoneEnc:     phoneEnc,
+		RoleID:       roleID,
 	})
-	if err != nil {
-		return uuid.UUID{}, err
-	}
-
-	if err := s.roleRepo.CreateUserRole(db.CreateUserRoleParams{
-		UserID:    userID,
-		RoleType:  params.Role,
-		CreatedBy: userID,
-	}); err != nil {
+	if err != nil && !strings.Contains(err.Error(), "no rows in result set") {
 		return uuid.UUID{}, err
 	}
 
@@ -251,8 +267,11 @@ func (s *service) UpdateUser(targetID uuid.UUID, updatedBy uuid.UUID, req Update
 	})
 }
 
-func (s *service) DeleteUser(id uuid.UUID) error {
-	return s.repo.DeleteUser(id)
+func (s *service) DeleteUser(id uuid.UUID, deletedBy uuid.UUID) error {
+	return s.repo.DeleteUser(db.DeleteUserParams{
+		ID:        id,
+		DeletedBy: deletedBy,
+	})
 }
 
 func (s *service) RestoreUser(id uuid.UUID) error {
@@ -291,7 +310,7 @@ func (s *service) SearchUser(query string, page, limit int32) ([]UserProfileResp
 			Email:            string(de),
 			Fullname:         string(df),
 			Phone:            string(dp),
-			Role:             user.Role.String,
+			Role:             user.RoleName.String,
 			CredibilityScore: int(user.CredibilityScore.Int16),
 			Status:           user.Status.String,
 			CreatedAt:        user.CreatedAt,
@@ -346,7 +365,7 @@ func (s *service) GetUserByID(id uuid.UUID) (UserProfileResponse, error) {
 		Email:            string(de),
 		Fullname:         string(df),
 		Phone:            string(dp),
-		Role:             user.Role.String,
+		Role:             user.RoleName.String,
 		CredibilityScore: int(user.CredibilityScore.Int16),
 		Status:           user.Status.String,
 		CreatedAt:        user.CreatedAt,

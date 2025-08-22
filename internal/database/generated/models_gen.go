@@ -32,6 +32,15 @@ type Official struct {
 	DeletedBy     pgtype.UUID        `db:"deleted_by" json:"deleted_by"`
 }
 
+type Role struct {
+	ID            uuid.UUID          `db:"id" json:"id"`
+	Name          string             `db:"name" json:"name"`
+	Description   pgtype.Text        `db:"description" json:"description"`
+	CreatedAt     pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	LastUpdatedAt pgtype.Timestamptz `db:"last_updated_at" json:"last_updated_at"`
+	DeletedAt     pgtype.Timestamptz `db:"deleted_at" json:"deleted_at"`
+}
+
 type User struct {
 	ID                  uuid.UUID          `db:"id" json:"id"`
 	EmailHash           string             `db:"email_hash" json:"email_hash"`
@@ -52,22 +61,11 @@ type User struct {
 	LastLoginAt         pgtype.Timestamptz `db:"last_login_at" json:"last_login_at"`
 	FailedLoginAttempts pgtype.Int4        `db:"failed_login_attempts" json:"failed_login_attempts"`
 	LockedUntil         pgtype.Timestamptz `db:"locked_until" json:"locked_until"`
+	RoleID              pgtype.UUID        `db:"role_id" json:"role_id"`
 	CreatedAt           pgtype.Timestamptz `db:"created_at" json:"created_at"`
 	CreatedBy           pgtype.UUID        `db:"created_by" json:"created_by"`
 	LastUpdatedAt       pgtype.Timestamptz `db:"last_updated_at" json:"last_updated_at"`
 	LastUpdatedBy       pgtype.UUID        `db:"last_updated_by" json:"last_updated_by"`
 	DeletedAt           pgtype.Timestamptz `db:"deleted_at" json:"deleted_at"`
 	DeletedBy           pgtype.UUID        `db:"deleted_by" json:"deleted_by"`
-}
-
-type UserRole struct {
-	ID            uuid.UUID          `db:"id" json:"id"`
-	UserID        uuid.UUID          `db:"user_id" json:"user_id"`
-	RoleType      string             `db:"role_type" json:"role_type"`
-	CreatedAt     pgtype.Timestamptz `db:"created_at" json:"created_at"`
-	CreatedBy     pgtype.UUID        `db:"created_by" json:"created_by"`
-	LastUpdatedAt pgtype.Timestamptz `db:"last_updated_at" json:"last_updated_at"`
-	LastUpdatedBy pgtype.UUID        `db:"last_updated_by" json:"last_updated_by"`
-	DeletedAt     pgtype.Timestamptz `db:"deleted_at" json:"deleted_at"`
-	DeletedBy     pgtype.UUID        `db:"deleted_by" json:"deleted_by"`
 }

@@ -9,100 +9,270 @@ import (
 	"context"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const createUserRole = `-- name: CreateUserRole :exec
-INSERT INTO user_roles (
-    user_id,
-    role_type,
-    created_by
+const assignRoleToUser = `-- name: AssignRoleToUser :exec
+UPDATE users
+SET 
+    role_id = (
+        SELECT id 
+        FROM roles 
+        WHERE name = $1::text 
+        AND deleted_at IS NULL
+    ),
+    last_updated_at = CURRENT_TIMESTAMP
+WHERE id = $2::uuid
+AND deleted_at IS NULL
+`
+
+type AssignRoleToUserParams struct {
+	RoleName string    `db:"role_name" json:"role_name"`
+	UserID   uuid.UUID `db:"user_id" json:"user_id"`
+}
+
+func (q *Queries) AssignRoleToUser(ctx context.Context, arg AssignRoleToUserParams) error {
+	_, err := q.db.Exec(ctx, assignRoleToUser, arg.RoleName, arg.UserID)
+	return err
+}
+
+const checkRoleExists = `-- name: CheckRoleExists :one
+SELECT EXISTS (
+    SELECT 1
+    FROM roles r
+    WHERE r.name = $1::text
+    AND r.deleted_at IS NULL
+) AS exists
+`
+
+func (q *Queries) CheckRoleExists(ctx context.Context, name string) (bool, error) {
+	row := q.db.QueryRow(ctx, checkRoleExists, name)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
+const createRole = `-- name: CreateRole :one
+INSERT INTO roles (
+    id,
+    name,
+    description,
+    created_at
 ) VALUES (
-    $1::uuid,
-    $2,
-    $3::uuid
-) ON CONFLICT (user_id, role_type) DO NOTHING
+    uuid_generate_v4(),
+    $1::text,
+    $2::text,
+    CURRENT_TIMESTAMP
+) RETURNING id
 `
 
-type CreateUserRoleParams struct {
-	UserID    uuid.UUID `db:"user_id" json:"user_id"`
-	RoleType  string    `db:"role_type" json:"role_type"`
-	CreatedBy uuid.UUID `db:"created_by" json:"created_by"`
+type CreateRoleParams struct {
+	Name        string `db:"name" json:"name"`
+	Description string `db:"description" json:"description"`
 }
 
-func (q *Queries) CreateUserRole(ctx context.Context, arg CreateUserRoleParams) error {
-	_, err := q.db.Exec(ctx, createUserRole, arg.UserID, arg.RoleType, arg.CreatedBy)
+func (q *Queries) CreateRole(ctx context.Context, arg CreateRoleParams) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, createRole, arg.Name, arg.Description)
+	var id uuid.UUID
+	err := row.Scan(&id)
+	return id, err
+}
+
+const deleteRole = `-- name: DeleteRole :exec
+UPDATE roles
+SET 
+    deleted_at = CURRENT_TIMESTAMP
+WHERE id = $1::uuid
+`
+
+func (q *Queries) DeleteRole(ctx context.Context, id uuid.UUID) error {
+	_, err := q.db.Exec(ctx, deleteRole, id)
 	return err
 }
 
-const deleteUserRole = `-- name: DeleteUserRole :exec
-UPDATE user_roles
-SET
-    deleted_at = NOW(),
-    deleted_by = $1::uuid
-WHERE user_id = $2::uuid
+const getRoleByID = `-- name: GetRoleByID :one
+SELECT r.id, r.name, r.description, r.created_at, r.last_updated_at, r.deleted_at
+FROM roles r
+WHERE r.id = $1::uuid
+AND r.deleted_at IS NULL
 `
 
-type DeleteUserRoleParams struct {
-	DeletedBy uuid.UUID `db:"deleted_by" json:"deleted_by"`
-	UserID    uuid.UUID `db:"user_id" json:"user_id"`
-}
-
-func (q *Queries) DeleteUserRole(ctx context.Context, arg DeleteUserRoleParams) error {
-	_, err := q.db.Exec(ctx, deleteUserRole, arg.DeletedBy, arg.UserID)
-	return err
-}
-
-const getUserRoleByUserID = `-- name: GetUserRoleByUserID :one
-SELECT id, user_id, role_type, created_at, created_by, last_updated_at, last_updated_by, deleted_at, deleted_by FROM user_roles
-WHERE user_id = $1 AND deleted_at IS NULL
-`
-
-func (q *Queries) GetUserRoleByUserID(ctx context.Context, userID uuid.UUID) (UserRole, error) {
-	row := q.db.QueryRow(ctx, getUserRoleByUserID, userID)
-	var i UserRole
+func (q *Queries) GetRoleByID(ctx context.Context, id uuid.UUID) (Role, error) {
+	row := q.db.QueryRow(ctx, getRoleByID, id)
+	var i Role
 	err := row.Scan(
 		&i.ID,
-		&i.UserID,
-		&i.RoleType,
+		&i.Name,
+		&i.Description,
 		&i.CreatedAt,
-		&i.CreatedBy,
 		&i.LastUpdatedAt,
-		&i.LastUpdatedBy,
 		&i.DeletedAt,
-		&i.DeletedBy,
 	)
 	return i, err
 }
 
-const updateUserRole = `-- name: UpdateUserRole :one
-UPDATE user_roles
-SET
-    role_type = $1,
-    last_updated_by = $2::uuid,
-    last_updated_at = NOW()
-WHERE user_id = $3::uuid
-RETURNING id, user_id, role_type, created_at, created_by, last_updated_at, last_updated_by, deleted_at, deleted_by
+const getRoleByName = `-- name: GetRoleByName :one
+SELECT r.id, r.name, r.description, r.created_at, r.last_updated_at, r.deleted_at
+FROM roles r
+WHERE r.name = $1::text
+AND r.deleted_at IS NULL
 `
 
-type UpdateUserRoleParams struct {
-	RoleType      string    `db:"role_type" json:"role_type"`
-	LastUpdatedBy uuid.UUID `db:"last_updated_by" json:"last_updated_by"`
-	UserID        uuid.UUID `db:"user_id" json:"user_id"`
-}
-
-func (q *Queries) UpdateUserRole(ctx context.Context, arg UpdateUserRoleParams) (UserRole, error) {
-	row := q.db.QueryRow(ctx, updateUserRole, arg.RoleType, arg.LastUpdatedBy, arg.UserID)
-	var i UserRole
+func (q *Queries) GetRoleByName(ctx context.Context, name string) (Role, error) {
+	row := q.db.QueryRow(ctx, getRoleByName, name)
+	var i Role
 	err := row.Scan(
 		&i.ID,
-		&i.UserID,
-		&i.RoleType,
+		&i.Name,
+		&i.Description,
 		&i.CreatedAt,
-		&i.CreatedBy,
 		&i.LastUpdatedAt,
-		&i.LastUpdatedBy,
 		&i.DeletedAt,
-		&i.DeletedBy,
 	)
 	return i, err
+}
+
+const getUsersByRoleName = `-- name: GetUsersByRoleName :many
+SELECT
+    u.id,
+    u.username,
+    u.email_enc AS email,
+    u.fullname_enc AS fullname,
+    r.name AS role_name,
+    u.created_at
+FROM users u
+JOIN roles r ON u.role_id = r.id
+WHERE r.name = $1::text
+AND u.deleted_at IS NULL
+AND r.deleted_at IS NULL
+ORDER BY u.created_at
+`
+
+type GetUsersByRoleNameRow struct {
+	ID        uuid.UUID          `db:"id" json:"id"`
+	Username  string             `db:"username" json:"username"`
+	Email     []byte             `db:"email" json:"email"`
+	Fullname  []byte             `db:"fullname" json:"fullname"`
+	RoleName  string             `db:"role_name" json:"role_name"`
+	CreatedAt pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
+func (q *Queries) GetUsersByRoleName(ctx context.Context, roleName string) ([]GetUsersByRoleNameRow, error) {
+	rows, err := q.db.Query(ctx, getUsersByRoleName, roleName)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetUsersByRoleNameRow{}
+	for rows.Next() {
+		var i GetUsersByRoleNameRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Username,
+			&i.Email,
+			&i.Fullname,
+			&i.RoleName,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const hasRole = `-- name: HasRole :one
+SELECT EXISTS (
+    SELECT 1
+    FROM users u
+    JOIN roles r ON u.role_id = r.id
+    WHERE u.id = $1::uuid
+    AND r.name = $2::text
+    AND u.deleted_at IS NULL
+    AND r.deleted_at IS NULL
+) AS has_role
+`
+
+type HasRoleParams struct {
+	UserID   uuid.UUID `db:"user_id" json:"user_id"`
+	RoleName string    `db:"role_name" json:"role_name"`
+}
+
+func (q *Queries) HasRole(ctx context.Context, arg HasRoleParams) (bool, error) {
+	row := q.db.QueryRow(ctx, hasRole, arg.UserID, arg.RoleName)
+	var has_role bool
+	err := row.Scan(&has_role)
+	return has_role, err
+}
+
+const listAllRoles = `-- name: ListAllRoles :many
+SELECT r.id, r.name, r.description, r.created_at, r.last_updated_at, r.deleted_at
+FROM roles r
+WHERE r.deleted_at IS NULL
+ORDER BY r.name
+`
+
+func (q *Queries) ListAllRoles(ctx context.Context) ([]Role, error) {
+	rows, err := q.db.Query(ctx, listAllRoles)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Role{}
+	for rows.Next() {
+		var i Role
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.Description,
+			&i.CreatedAt,
+			&i.LastUpdatedAt,
+			&i.DeletedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const removeUserRole = `-- name: RemoveUserRole :exec
+UPDATE users
+SET 
+    role_id = NULL,
+    last_updated_at = CURRENT_TIMESTAMP
+WHERE id = $1::uuid
+AND deleted_at IS NULL
+`
+
+func (q *Queries) RemoveUserRole(ctx context.Context, userID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, removeUserRole, userID)
+	return err
+}
+
+const updateRole = `-- name: UpdateRole :exec
+UPDATE roles
+SET
+    name = COALESCE(NULLIF($1::text, ''), name),
+    description = COALESCE($2::text, description),
+    last_updated_at = CURRENT_TIMESTAMP
+WHERE id = $3::uuid
+AND deleted_at IS NULL
+`
+
+type UpdateRoleParams struct {
+	Name        string    `db:"name" json:"name"`
+	Description string    `db:"description" json:"description"`
+	ID          uuid.UUID `db:"id" json:"id"`
+}
+
+func (q *Queries) UpdateRole(ctx context.Context, arg UpdateRoleParams) error {
+	_, err := q.db.Exec(ctx, updateRole, arg.Name, arg.Description, arg.ID)
+	return err
 }

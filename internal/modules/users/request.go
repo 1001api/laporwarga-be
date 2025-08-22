@@ -23,17 +23,17 @@ type UpdateUserRequest struct {
 }
 
 type UserProfileResponse struct {
-	ID               uuid.UUID          `db:"id" json:"id"`
-	Email            string             `db:"email" json:"email"`
-	Fullname         string             `db:"fullname" json:"fullname"`
-	Phone            string             `db:"phone" json:"phone"`
-	Username         string             `db:"username" json:"username"`
-	Role             string             `db:"role" json:"role"`
-	CredibilityScore int                `db:"credibility_score" json:"credibility_score"`
-	Status           string             `db:"status" json:"status"`
-	IsEmailVerified  bool               `db:"is_email_verified" json:"is_email_verified"`
-	IsPhoneVerified  bool               `db:"is_phone_verified" json:"is_phone_verified"`
-	LastLoginAt      pgtype.Timestamptz `db:"last_login_at" json:"last_login_at"`
-	CreatedAt        pgtype.Timestamptz `db:"created_at" json:"created_at"`
-	UpdatedAt        pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	ID               uuid.UUID          `json:"id"`
+	Email            string             `json:"email"`
+	Fullname         string             `json:"fullname"`
+	Phone            string             `json:"phone"`
+	Username         string             `json:"username"`
+	Role             string             `json:"role"`
+	CredibilityScore int                `json:"credibility_score"`
+	Status           string             `json:"status"`
+	IsEmailVerified  bool               `json:"is_email_verified"`
+	IsPhoneVerified  bool               `json:"is_phone_verified"`
+	LastLoginAt      pgtype.Timestamptz `json:"last_login_at"`
+	CreatedAt        pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt        pgtype.Timestamptz `json:"updated_at"`
 }

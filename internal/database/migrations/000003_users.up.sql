@@ -1,7 +1,4 @@
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
-CREATE EXTENSION IF NOT EXISTS postgis;
-
-CREATE TABLE users (
+CREATE TABLE IF NOT EXISTS users (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
 
     email_hash TEXT UNIQUE NOT NULL,  -- must be SHA-256 hash
@@ -27,6 +24,8 @@ CREATE TABLE users (
     failed_login_attempts INTEGER DEFAULT 0,
     locked_until TIMESTAMPTZ,
 
+    role_id UUID REFERENCES roles(id) ON DELETE SET NULL,
+
     created_at TIMESTAMPTZ DEFAULT NOW(),
     created_by UUID REFERENCES users(id),
     last_updated_at TIMESTAMPTZ,
@@ -35,29 +34,12 @@ CREATE TABLE users (
     deleted_by UUID REFERENCES users(id)
 );
 
-CREATE INDEX idx_users_username ON users(username);
-CREATE INDEX idx_users_email_hash ON users(email_hash);
-CREATE INDEX idx_users_status ON users(status);
+CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
+CREATE INDEX IF NOT EXISTS idx_users_email_hash ON users(email_hash);
+CREATE INDEX IF NOT EXISTS idx_users_status ON users(status);
+CREATE INDEX IF NOT EXISTS idx_users_role_id ON users(role_id);
 
-CREATE TABLE user_roles (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-
-    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    role_type TEXT NOT NULL CHECK (role_type IN ('citizen', 'official', 'admin')),
-
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    created_by UUID REFERENCES users(id),
-    last_updated_at TIMESTAMPTZ,
-    last_updated_by UUID REFERENCES users(id),
-    deleted_at TIMESTAMPTZ,
-    deleted_by UUID REFERENCES users(id),
-
-    UNIQUE (user_id, role_type)
-);
-
-CREATE INDEX idx_user_roles_user_id ON user_roles(user_id);
-
-CREATE TABLE officials (
+CREATE TABLE IF NOT EXISTS officials (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
 
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -72,7 +54,7 @@ CREATE TABLE officials (
     deleted_by UUID REFERENCES users(id)
 );
 
-CREATE TABLE audit_logs (
+CREATE TABLE IF NOT EXISTS audit_logs (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
 
     entity_name TEXT NOT NULL,
@@ -84,5 +66,5 @@ CREATE TABLE audit_logs (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_audit_logs_entity ON audit_logs(entity_name, entity_id);
-CREATE INDEX idx_audit_logs_performed_by ON audit_logs(performed_by);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_entity ON audit_logs(entity_name, entity_id);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_performed_by ON audit_logs(performed_by);

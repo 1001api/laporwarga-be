@@ -11,22 +11,31 @@ import (
 )
 
 type Querier interface {
+	AssignRoleToUser(ctx context.Context, arg AssignRoleToUserParams) error
+	CheckRoleExists(ctx context.Context, name string) (bool, error)
 	CheckUserExists(ctx context.Context, arg CheckUserExistsParams) (bool, error)
+	CreateRole(ctx context.Context, arg CreateRoleParams) (uuid.UUID, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (uuid.UUID, error)
-	CreateUserRole(ctx context.Context, arg CreateUserRoleParams) error
-	DeleteUser(ctx context.Context, id uuid.UUID) error
-	DeleteUserRole(ctx context.Context, arg DeleteUserRoleParams) error
+	DeleteRole(ctx context.Context, id uuid.UUID) error
+	DeleteUser(ctx context.Context, arg DeleteUserParams) error
+	GetRoleByID(ctx context.Context, id uuid.UUID) (Role, error)
+	GetRoleByName(ctx context.Context, name string) (Role, error)
 	GetUserByEmail(ctx context.Context, emailHash string) (GetUserByEmailRow, error)
 	GetUserByID(ctx context.Context, id uuid.UUID) (GetUserByIDRow, error)
 	GetUserByIdentifier(ctx context.Context, arg GetUserByIdentifierParams) (GetUserByIdentifierRow, error)
-	GetUserRoleByUserID(ctx context.Context, userID uuid.UUID) (UserRole, error)
 	GetUsers(ctx context.Context, arg GetUsersParams) ([]GetUsersRow, error)
+	GetUsersByRoleName(ctx context.Context, roleName string) ([]GetUsersByRoleNameRow, error)
+	HasRole(ctx context.Context, arg HasRoleParams) (bool, error)
 	IncrementFailedLoginCount(ctx context.Context, id uuid.UUID) error
+	ListAllRoles(ctx context.Context) ([]Role, error)
+	LockUser(ctx context.Context, arg LockUserParams) error
+	RemoveUserRole(ctx context.Context, userID uuid.UUID) error
+	ResetFailedLoginCount(ctx context.Context, id uuid.UUID) error
 	RestoreUser(ctx context.Context, id uuid.UUID) error
 	SearchUser(ctx context.Context, arg SearchUserParams) ([]SearchUserRow, error)
 	UpdateLastLogin(ctx context.Context, id uuid.UUID) error
+	UpdateRole(ctx context.Context, arg UpdateRoleParams) error
 	UpdateUser(ctx context.Context, arg UpdateUserParams) error
-	UpdateUserRole(ctx context.Context, arg UpdateUserRoleParams) (UserRole, error)
 }
 
 var _ Querier = (*Queries)(nil)

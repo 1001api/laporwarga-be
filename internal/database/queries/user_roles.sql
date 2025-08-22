@@ -1,30 +1,100 @@
--- name: CreateUserRole :exec
-INSERT INTO user_roles (
-    user_id,
-    role_type,
-    created_by
+-- name: CreateRole :one
+INSERT INTO roles (
+    id,
+    name,
+    description,
+    created_at
 ) VALUES (
-    @user_id::uuid,
-    @role_type,
-    @created_by::uuid
-) ON CONFLICT (user_id, role_type) DO NOTHING;
+    uuid_generate_v4(),
+    @name::text,
+    @description::text,
+    CURRENT_TIMESTAMP
+) RETURNING id;
 
--- name: GetUserRoleByUserID :one
-SELECT * FROM user_roles
-WHERE user_id = @user_id AND deleted_at IS NULL;
+-- name: AssignRoleToUser :exec
+UPDATE users
+SET 
+    role_id = (
+        SELECT id 
+        FROM roles 
+        WHERE name = @role_name::text 
+        AND deleted_at IS NULL
+    ),
+    last_updated_at = CURRENT_TIMESTAMP
+WHERE id = @user_id::uuid
+AND deleted_at IS NULL;
 
--- name: UpdateUserRole :one
-UPDATE user_roles
+-- name: RemoveUserRole :exec
+UPDATE users
+SET 
+    role_id = NULL,
+    last_updated_at = CURRENT_TIMESTAMP
+WHERE id = @user_id::uuid
+AND deleted_at IS NULL;
+
+-- name: GetUsersByRoleName :many
+SELECT
+    u.id,
+    u.username,
+    u.email_enc AS email,
+    u.fullname_enc AS fullname,
+    r.name AS role_name,
+    u.created_at
+FROM users u
+JOIN roles r ON u.role_id = r.id
+WHERE r.name = @role_name::text
+AND u.deleted_at IS NULL
+AND r.deleted_at IS NULL
+ORDER BY u.created_at;
+
+-- name: GetRoleByName :one
+SELECT r.*
+FROM roles r
+WHERE r.name = @name::text
+AND r.deleted_at IS NULL;
+
+-- name: GetRoleByID :one
+SELECT r.*
+FROM roles r
+WHERE r.id = @id::uuid
+AND r.deleted_at IS NULL;
+
+-- name: ListAllRoles :many
+SELECT r.*
+FROM roles r
+WHERE r.deleted_at IS NULL
+ORDER BY r.name;
+
+-- name: HasRole :one
+SELECT EXISTS (
+    SELECT 1
+    FROM users u
+    JOIN roles r ON u.role_id = r.id
+    WHERE u.id = @user_id::uuid
+    AND r.name = @role_name::text
+    AND u.deleted_at IS NULL
+    AND r.deleted_at IS NULL
+) AS has_role;
+
+-- name: CheckRoleExists :one
+SELECT EXISTS (
+    SELECT 1
+    FROM roles r
+    WHERE r.name = @name::text
+    AND r.deleted_at IS NULL
+) AS exists;
+
+-- name: DeleteRole :exec
+UPDATE roles
+SET 
+    deleted_at = CURRENT_TIMESTAMP
+WHERE id = @id::uuid;
+
+-- name: UpdateRole :exec
+UPDATE roles
 SET
-    role_type = @role_type,
-    last_updated_by = @last_updated_by::uuid,
-    last_updated_at = NOW()
-WHERE user_id = @user_id::uuid
-RETURNING *;
-
--- name: DeleteUserRole :exec
-UPDATE user_roles
-SET
-    deleted_at = NOW(),
-    deleted_by = @deleted_by::uuid
-WHERE user_id = @user_id::uuid;
+    name = COALESCE(NULLIF(@name::text, ''), name),
+    description = COALESCE(@description::text, description),
+    last_updated_at = CURRENT_TIMESTAMP
+WHERE id = @id::uuid
+AND deleted_at IS NULL;

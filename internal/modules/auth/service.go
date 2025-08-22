@@ -113,7 +113,7 @@ func (s *service) GenerateToken(user db.GetUserByIdentifierRow) (string, error) 
 		UserID:    user.ID,
 		Username:  user.Username,
 		Email:     string(user.Email),
-		Role:      user.Role.String,
+		Role:      user.RoleName.String,
 		TokenType: "access",
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(expiresAt),
@@ -140,7 +140,7 @@ func (s *service) GenerateRefreshToken(user db.GetUserByIdentifierRow) (string, 
 		UserID:    user.ID,
 		Username:  user.Username,
 		Email:     string(user.Email),
-		Role:      user.Role.String,
+		Role:      user.RoleName.String,
 		TokenType: "refresh",
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(expiresAt),

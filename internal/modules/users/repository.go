@@ -14,7 +14,7 @@ type UserRepository interface {
 	CreateUser(req db.CreateUserParams) (uuid.UUID, error)
 	GetUsers(arg db.GetUsersParams) ([]db.GetUsersRow, error)
 	UpdateUser(arg db.UpdateUserParams) error
-	DeleteUser(id uuid.UUID) error
+	DeleteUser(arg db.DeleteUserParams) error
 	RestoreUser(id uuid.UUID) error
 	UpdateLastLogin(id uuid.UUID) error
 	SearchUser(arg db.SearchUserParams) ([]db.SearchUserRow, error)
@@ -56,8 +56,8 @@ func (r *repository) CheckUserExists(arg db.CheckUserExistsParams) (bool, error)
 	return r.queries.CheckUserExists(context.Background(), arg)
 }
 
-func (r *repository) DeleteUser(id uuid.UUID) error {
-	return r.queries.DeleteUser(context.Background(), id)
+func (r *repository) DeleteUser(arg db.DeleteUserParams) error {
+	return r.queries.DeleteUser(context.Background(), arg)
 }
 
 func (r *repository) RestoreUser(id uuid.UUID) error {

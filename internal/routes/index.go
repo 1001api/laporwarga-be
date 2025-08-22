@@ -30,8 +30,11 @@ func Routing(r fiber.Router, db *pgxpool.Pool) {
 	userService := users.NewUserService(userRepo, roleRepo, encKey)
 	authService := auth.NewAuthService(userService, encKey)
 
+	userRolesService := userroles.NewUserRolesService(roleRepo)
+
 	userController := controllers.NewUserController(userService, validator)
 	authController := controllers.NewAuthController(authService, validator)
+	userRolesController := controllers.NewUserRolesController(userRolesService, validator)
 
 	// Initialize root user
 	if err := userService.InitializeRootUser(); err != nil {
@@ -49,15 +52,21 @@ func Routing(r fiber.Router, db *pgxpool.Pool) {
 
 	userRoutes := versioning.Group("/users", JWTMiddleware(authService))
 	{
-		userRoutes.Get("/list", userController.GetMasterUser)
-		userRoutes.Post("/create", RoleMiddleware(string(pkg.RoleAdmin)), authController.Register)
 		userRoutes.Get("/me", userController.GetCurrentUser)
 		userRoutes.Patch("/me", userController.UpdateCurrentUser)
+		userRoutes.Get("/list", RoleMiddleware(string(pkg.RoleAdmin)), userController.GetMasterUser)
+		userRoutes.Post("/create", RoleMiddleware(string(pkg.RoleAdmin)), authController.Register)
 		userRoutes.Get("/search", RoleMiddleware(string(pkg.RoleAdmin)), userController.SearchUser)
 		userRoutes.Get("/:id", RoleMiddleware(string(pkg.RoleAdmin)), userController.GetUserByID)
 		userRoutes.Post("/restore/:id", RoleMiddleware(string(pkg.RoleAdmin)), userController.RestoreUser)
 		userRoutes.Patch("/:id", RoleMiddleware(string(pkg.RoleAdmin)), userController.UpdateUser)
 		userRoutes.Delete("/:id", RoleMiddleware(string(pkg.RoleAdmin)), userController.DeleteUser)
+	}
+
+	rolesRoutes := versioning.Group("/roles", JWTMiddleware(authService), RoleMiddleware(string(pkg.RoleAdmin)))
+	{
+		rolesRoutes.Get("/list", userRolesController.ListAllRoles)
+		rolesRoutes.Post("/create", userRolesController.CreateRole)
 	}
 }
 
