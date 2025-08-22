@@ -204,7 +204,7 @@ func (c *UserController) UpdateCurrentUser(ctx *fiber.Ctx) error {
 		)
 	}
 
-	var req users.UpdateUserParams
+	var req users.UpdateUserRequest
 
 	if err := ctx.BodyParser(&req); err != nil {
 		return ctx.Status(fiber.StatusBadRequest).JSON(
@@ -228,7 +228,7 @@ func (c *UserController) UpdateCurrentUser(ctx *fiber.Ctx) error {
 		)
 	}
 
-	if err := c.userSvc.UpdateUser(uid, req); err != nil {
+	if err := c.userSvc.UpdateUser(uid, uid, req); err != nil {
 		return ctx.Status(fiber.StatusInternalServerError).JSON(
 			fiber.Map{
 				"error": err.Error(),
@@ -251,7 +251,8 @@ func (c *UserController) UpdateUser(ctx *fiber.Ctx) error {
 	startTime := time.Now()
 
 	currentUserID := ctx.Locals("user_id")
-	if _, err := uuid.Parse(cast.ToString(currentUserID)); err != nil {
+	currentUserUUID, err := uuid.Parse(cast.ToString(currentUserID))
+	if err != nil {
 		return ctx.Status(fiber.StatusUnauthorized).JSON(
 			fiber.Map{
 				"error": "unauthenticated",
@@ -274,7 +275,7 @@ func (c *UserController) UpdateUser(ctx *fiber.Ctx) error {
 		)
 	}
 
-	var req users.UpdateUserParams
+	var req users.UpdateUserRequest
 
 	if err := ctx.BodyParser(&req); err != nil {
 		return ctx.Status(fiber.StatusBadRequest).JSON(
@@ -298,7 +299,7 @@ func (c *UserController) UpdateUser(ctx *fiber.Ctx) error {
 		)
 	}
 
-	if err := c.userSvc.UpdateUser(uid, req); err != nil {
+	if err := c.userSvc.UpdateUser(uid, currentUserUUID, req); err != nil {
 		return ctx.Status(fiber.StatusInternalServerError).JSON(
 			fiber.Map{
 				"error": err.Error(),

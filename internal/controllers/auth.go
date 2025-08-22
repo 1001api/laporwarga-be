@@ -48,7 +48,7 @@ func (c *AuthController) Register(ctx *fiber.Ctx) error {
 		)
 	}
 
-	userRow, err := c.authService.Register(req)
+	createdID, err := c.authService.Register(req)
 	if err != nil {
 		return ctx.Status(fiber.StatusInternalServerError).JSON(
 			fiber.Map{
@@ -61,7 +61,7 @@ func (c *AuthController) Register(ctx *fiber.Ctx) error {
 	}
 
 	return ctx.JSON(fiber.Map{
-		"data": userRow,
+		"data": createdID.String(),
 		"meta": fiber.Map{
 			"duration": time.Since(startTime).String(),
 		},

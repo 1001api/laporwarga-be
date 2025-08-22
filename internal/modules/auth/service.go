@@ -5,6 +5,7 @@ import (
 	"fmt"
 	db "hubku/lapor_warga_be_v2/internal/database/generated"
 	"hubku/lapor_warga_be_v2/internal/modules/users"
+	"hubku/lapor_warga_be_v2/pkg"
 	"log"
 	"time"
 
@@ -12,16 +13,13 @@ import (
 	"github.com/google/uuid"
 	"github.com/spf13/cast"
 	"github.com/spf13/viper"
-	"golang.org/x/crypto/bcrypt"
 )
 
 type AuthService interface {
 	Login(req LoginRequest) (*LoginResponse, error)
 	ValidateToken(tokenString string) (*Claims, error)
 	GenerateToken(user db.GetUserByIdentifierRow) (string, error)
-	HashPassword(password string) (string, error)
-	VerifyPassword(hashedPassword, password string) error
-	Register(req RegisterRequest) (db.CreateUserRow, error)
+	Register(req RegisterRequest) (uuid.UUID, error)
 	GenerateRefreshToken(user db.GetUserByIdentifierRow) (string, error)
 	RefreshToken(req RefreshRequest) (*LoginResponse, error)
 }
@@ -31,9 +29,10 @@ type service struct {
 	jwtSecret     []byte
 	tokenExpiry   time.Duration
 	refreshExpiry time.Duration
+	enckey        []byte
 }
 
-func NewAuthService(userService users.UserService) AuthService {
+func NewAuthService(userService users.UserService, encKey string) AuthService {
 	viper.SetDefault("JWT_EXPIRY", 15)
 	viper.SetDefault("JWT_REFRESH_EXPIRY", 720)
 
@@ -42,6 +41,7 @@ func NewAuthService(userService users.UserService) AuthService {
 		jwtSecret:     []byte(viper.GetString("JWT_SECRET")),
 		tokenExpiry:   time.Duration(viper.GetInt("JWT_EXPIRY")) * time.Minute,
 		refreshExpiry: time.Duration(viper.GetInt("JWT_REFRESH_EXPIRY")) * time.Minute,
+		enckey:        []byte(encKey),
 	}
 }
 
@@ -59,7 +59,7 @@ func (s *service) Login(req LoginRequest) (*LoginResponse, error) {
 		return nil, errors.New("account is temporarily locked due to multiple failed login attempts, please wait a few minutes")
 	}
 
-	if err := s.VerifyPassword(user.PasswordHash.String, req.Password); err != nil {
+	if err := pkg.VerifyPassword(user.PasswordHash.String, req.Password); err != nil {
 		s.userService.IncrementFailedLogins(user.ID)
 		log.Println(err)
 		return nil, errors.New("invalid credentials")
@@ -85,22 +85,25 @@ func (s *service) Login(req LoginRequest) (*LoginResponse, error) {
 	}, nil
 }
 
-func (s *service) Register(req RegisterRequest) (db.CreateUserRow, error) {
-	hashed, err := s.HashPassword(req.Password)
+func (s *service) Register(req RegisterRequest) (uuid.UUID, error) {
+	hashed, err := pkg.HashPassword(req.Password)
 	if err != nil {
-		return db.CreateUserRow{}, err
+		return uuid.UUID{}, err
 	}
 
-	params := db.CreateUserParams{
+	createdID, err := s.userService.CreateUser(users.CreateUserRequest{
 		Username:     req.Username,
 		Email:        req.Email,
 		FullName:     req.Fullname,
-		PasswordHash: hashed,
+		PasswordHash: string(hashed),
 		PhoneNumber:  req.PhoneNumber,
 		Role:         req.Role,
+	})
+	if err != nil {
+		return uuid.UUID{}, err
 	}
 
-	return s.userService.CreateUser(params)
+	return createdID, nil
 }
 
 func (s *service) GenerateToken(user db.GetUserByIdentifierRow) (string, error) {
@@ -109,7 +112,7 @@ func (s *service) GenerateToken(user db.GetUserByIdentifierRow) (string, error) 
 	claims := &Claims{
 		UserID:    user.ID,
 		Username:  user.Username,
-		Email:     user.Email,
+		Email:     string(user.Email),
 		Role:      user.Role.String,
 		TokenType: "access",
 		RegisteredClaims: jwt.RegisteredClaims{
@@ -136,7 +139,7 @@ func (s *service) GenerateRefreshToken(user db.GetUserByIdentifierRow) (string, 
 	claims := &Claims{
 		UserID:    user.ID,
 		Username:  user.Username,
-		Email:     user.Email,
+		Email:     string(user.Email),
 		Role:      user.Role.String,
 		TokenType: "refresh",
 		RegisteredClaims: jwt.RegisteredClaims{
@@ -185,15 +188,6 @@ func (s *service) RefreshToken(req RefreshRequest) (*LoginResponse, error) {
 		Token:        accessToken,
 		RefreshToken: newRefreshToken,
 	}, nil
-}
-
-func (s *service) HashPassword(password string) (string, error) {
-	hash, err := bcrypt.GenerateFromPassword([]byte(password), 12)
-	return string(hash), err
-}
-
-func (s *service) VerifyPassword(hashedPassword, password string) error {
-	return bcrypt.CompareHashAndPassword([]byte(hashedPassword), []byte(password))
 }
 
 func (s *service) ValidateToken(tokenString string) (*Claims, error) {

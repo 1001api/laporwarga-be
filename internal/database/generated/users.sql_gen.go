@@ -7,36 +7,28 @@ package db
 
 import (
 	"context"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const checkUserExists = `-- name: CheckUserExists :one
-SELECT EXISTS(
+SELECT EXISTS (
     SELECT 1
     FROM users
-    WHERE 
-        (
-            $1::text IS NOT NULL
-            AND pgp_sym_decrypt(email, $2::text) = $1::text
-        )
-        OR (
-            $3::text IS NOT NULL
-            AND username = $3::text
-        )
+    WHERE
+        ($1::text IS NOT NULL AND $1 != '' AND email_hash = $1)
+        OR ($2::text IS NOT NULL AND $2 != '' AND username = $2)
 ) AS exists
 `
 
 type CheckUserExistsParams struct {
-	Email    string `db:"email" json:"email"`
-	Key      string `db:"key" json:"key"`
-	Username string `db:"username" json:"username"`
+	EmailHash string `db:"email_hash" json:"email_hash"`
+	Username  string `db:"username" json:"username"`
 }
 
 func (q *Queries) CheckUserExists(ctx context.Context, arg CheckUserExistsParams) (bool, error) {
-	row := q.db.QueryRow(ctx, checkUserExists, arg.Email, arg.Key, arg.Username)
+	row := q.db.QueryRow(ctx, checkUserExists, arg.EmailHash, arg.Username)
 	var exists bool
 	err := row.Scan(&exists)
 	return exists, err
@@ -44,84 +36,58 @@ func (q *Queries) CheckUserExists(ctx context.Context, arg CheckUserExistsParams
 
 const createUser = `-- name: CreateUser :one
 INSERT INTO users (
-    email,
-    full_name,
+    email_hash,
+    email_enc,
+    fullname_hash,
+    fullname_enc,
     username,
     password_hash,
-    phone_number,
-    role
+    phone_hash,
+    phone_enc
 )
 VALUES (
-    pgp_sym_encrypt($1::text, $2::text),
-    pgp_sym_encrypt($3::text, $2::text),
-    $4::text,
-    $5::text,
-    pgp_sym_encrypt($6::text, $2::text),
-    $7::text
-)
-RETURNING 
-    id,
-    pgp_sym_decrypt(email, $2::text) AS email,
-    pgp_sym_decrypt(full_name, $2::text) AS full_name,
-    pgp_sym_decrypt(phone_number, $2::text) AS phone_number,
-    role,
-    credibility_score,
-    status,
-    created_at,
-    updated_at
+    $1::text,
+    $2,
+    $3::text,
+    $4,
+    $5,
+    $6::text,
+    $7::text,
+    $8
+) RETURNING id
 `
 
 type CreateUserParams struct {
-	Email        string `db:"email" json:"email"`
-	Key          string `db:"key" json:"key"`
-	FullName     string `db:"full_name" json:"full_name"`
+	EmailHash    string `db:"email_hash" json:"email_hash"`
+	EmailEnc     []byte `db:"email_enc" json:"email_enc"`
+	FullnameHash string `db:"fullname_hash" json:"fullname_hash"`
+	FullnameEnc  []byte `db:"fullname_enc" json:"fullname_enc"`
 	Username     string `db:"username" json:"username"`
 	PasswordHash string `db:"password_hash" json:"password_hash"`
-	PhoneNumber  string `db:"phone_number" json:"phone_number"`
-	Role         string `db:"role" json:"role"`
+	PhoneHash    string `db:"phone_hash" json:"phone_hash"`
+	PhoneEnc     []byte `db:"phone_enc" json:"phone_enc"`
 }
 
-type CreateUserRow struct {
-	ID               uuid.UUID          `db:"id" json:"id"`
-	Email            string             `db:"email" json:"email"`
-	FullName         string             `db:"full_name" json:"full_name"`
-	PhoneNumber      string             `db:"phone_number" json:"phone_number"`
-	Role             pgtype.Text        `db:"role" json:"role"`
-	CredibilityScore pgtype.Int2        `db:"credibility_score" json:"credibility_score"`
-	Status           pgtype.Text        `db:"status" json:"status"`
-	CreatedAt        time.Time          `db:"created_at" json:"created_at"`
-	UpdatedAt        pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
-}
-
-func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (CreateUserRow, error) {
+func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (uuid.UUID, error) {
 	row := q.db.QueryRow(ctx, createUser,
-		arg.Email,
-		arg.Key,
-		arg.FullName,
+		arg.EmailHash,
+		arg.EmailEnc,
+		arg.FullnameHash,
+		arg.FullnameEnc,
 		arg.Username,
 		arg.PasswordHash,
-		arg.PhoneNumber,
-		arg.Role,
+		arg.PhoneHash,
+		arg.PhoneEnc,
 	)
-	var i CreateUserRow
-	err := row.Scan(
-		&i.ID,
-		&i.Email,
-		&i.FullName,
-		&i.PhoneNumber,
-		&i.Role,
-		&i.CredibilityScore,
-		&i.Status,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-	)
-	return i, err
+	var id uuid.UUID
+	err := row.Scan(&id)
+	return id, err
 }
 
 const deleteUser = `-- name: DeleteUser :exec
 UPDATE users 
-SET deleted_at = CURRENT_TIMESTAMP
-WHERE id = $1::uuid
+SET deleted_at = NOW()
+WHERE id = $1
 `
 
 func (q *Queries) DeleteUser(ctx context.Context, id uuid.UUID) error {
@@ -131,45 +97,44 @@ func (q *Queries) DeleteUser(ctx context.Context, id uuid.UUID) error {
 
 const getUserByEmail = `-- name: GetUserByEmail :one
 SELECT 
-    id,
-    pgp_sym_decrypt(email, $1::text) AS email,
-    pgp_sym_decrypt(full_name, $1::text) AS full_name,
-    pgp_sym_decrypt(phone_number, $1::text) AS phone_number,
-    role,
-    credibility_score,
-    status,
-    created_at,
-    updated_at
-FROM users
-WHERE pgp_sym_decrypt(email, $1::text) = $2::text
+    u.id,
+    u.username,
+    u.email_enc as email,
+    u.fullname_enc as fullname,
+    u.phone_enc as phone,
+    ur.role_type AS role,
+    u.credibility_score,
+    u.status,
+    u.created_at,
+    u.last_updated_at AS updated_at
+FROM users u
+LEFT JOIN user_roles ur ON u.id = ur.user_id
+WHERE u.email_hash = $1
 LIMIT 1
 `
 
-type GetUserByEmailParams struct {
-	Key   string `db:"key" json:"key"`
-	Email string `db:"email" json:"email"`
-}
-
 type GetUserByEmailRow struct {
 	ID               uuid.UUID          `db:"id" json:"id"`
-	Email            string             `db:"email" json:"email"`
-	FullName         string             `db:"full_name" json:"full_name"`
-	PhoneNumber      string             `db:"phone_number" json:"phone_number"`
+	Username         string             `db:"username" json:"username"`
+	Email            []byte             `db:"email" json:"email"`
+	Fullname         []byte             `db:"fullname" json:"fullname"`
+	Phone            []byte             `db:"phone" json:"phone"`
 	Role             pgtype.Text        `db:"role" json:"role"`
 	CredibilityScore pgtype.Int2        `db:"credibility_score" json:"credibility_score"`
 	Status           pgtype.Text        `db:"status" json:"status"`
-	CreatedAt        time.Time          `db:"created_at" json:"created_at"`
+	CreatedAt        pgtype.Timestamptz `db:"created_at" json:"created_at"`
 	UpdatedAt        pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 }
 
-func (q *Queries) GetUserByEmail(ctx context.Context, arg GetUserByEmailParams) (GetUserByEmailRow, error) {
-	row := q.db.QueryRow(ctx, getUserByEmail, arg.Key, arg.Email)
+func (q *Queries) GetUserByEmail(ctx context.Context, emailHash string) (GetUserByEmailRow, error) {
+	row := q.db.QueryRow(ctx, getUserByEmail, emailHash)
 	var i GetUserByEmailRow
 	err := row.Scan(
 		&i.ID,
+		&i.Username,
 		&i.Email,
-		&i.FullName,
-		&i.PhoneNumber,
+		&i.Fullname,
+		&i.Phone,
 		&i.Role,
 		&i.CredibilityScore,
 		&i.Status,
@@ -181,48 +146,56 @@ func (q *Queries) GetUserByEmail(ctx context.Context, arg GetUserByEmailParams) 
 
 const getUserByID = `-- name: GetUserByID :one
 SELECT 
-    id,
-    pgp_sym_decrypt(email, $1::text) AS email,
-    pgp_sym_decrypt(full_name, $1::text) AS full_name,
-    pgp_sym_decrypt(phone_number, $1::text) AS phone_number,
-    role,
-    credibility_score,
-    status,
-    created_at,
-    updated_at
-FROM users
-WHERE id = $2::uuid
+    u.id,
+    u.username,
+    u.email_enc as email,
+    u.fullname_enc as fullname,
+    u.phone_enc as phone,
+    ur.role_type AS role,
+    u.credibility_score,
+    u.status,
+    u.is_email_verified, 
+    u.is_phone_verified,
+    u.last_login_at,
+    u.created_at,
+    u.last_updated_at AS updated_at
+FROM users u
+LEFT JOIN user_roles ur ON u.id = ur.user_id
+WHERE u.id = $1
 LIMIT 1
 `
 
-type GetUserByIDParams struct {
-	Key string    `db:"key" json:"key"`
-	ID  uuid.UUID `db:"id" json:"id"`
-}
-
 type GetUserByIDRow struct {
 	ID               uuid.UUID          `db:"id" json:"id"`
-	Email            string             `db:"email" json:"email"`
-	FullName         string             `db:"full_name" json:"full_name"`
-	PhoneNumber      string             `db:"phone_number" json:"phone_number"`
+	Username         string             `db:"username" json:"username"`
+	Email            []byte             `db:"email" json:"email"`
+	Fullname         []byte             `db:"fullname" json:"fullname"`
+	Phone            []byte             `db:"phone" json:"phone"`
 	Role             pgtype.Text        `db:"role" json:"role"`
 	CredibilityScore pgtype.Int2        `db:"credibility_score" json:"credibility_score"`
 	Status           pgtype.Text        `db:"status" json:"status"`
-	CreatedAt        time.Time          `db:"created_at" json:"created_at"`
+	IsEmailVerified  pgtype.Bool        `db:"is_email_verified" json:"is_email_verified"`
+	IsPhoneVerified  pgtype.Bool        `db:"is_phone_verified" json:"is_phone_verified"`
+	LastLoginAt      pgtype.Timestamptz `db:"last_login_at" json:"last_login_at"`
+	CreatedAt        pgtype.Timestamptz `db:"created_at" json:"created_at"`
 	UpdatedAt        pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 }
 
-func (q *Queries) GetUserByID(ctx context.Context, arg GetUserByIDParams) (GetUserByIDRow, error) {
-	row := q.db.QueryRow(ctx, getUserByID, arg.Key, arg.ID)
+func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (GetUserByIDRow, error) {
+	row := q.db.QueryRow(ctx, getUserByID, id)
 	var i GetUserByIDRow
 	err := row.Scan(
 		&i.ID,
+		&i.Username,
 		&i.Email,
-		&i.FullName,
-		&i.PhoneNumber,
+		&i.Fullname,
+		&i.Phone,
 		&i.Role,
 		&i.CredibilityScore,
 		&i.Status,
+		&i.IsEmailVerified,
+		&i.IsPhoneVerified,
+		&i.LastLoginAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -231,42 +204,42 @@ func (q *Queries) GetUserByID(ctx context.Context, arg GetUserByIDParams) (GetUs
 
 const getUserByIdentifier = `-- name: GetUserByIdentifier :one
 SELECT 
-    id,
-    pgp_sym_decrypt(email, $1::text) AS email,
-    pgp_sym_decrypt(full_name, $1::text) AS full_name,
-    pgp_sym_decrypt(phone_number, $1::text) AS phone_number,
-    username,
-    role,
-    credibility_score,
-    status,
-    password_hash,
-    auth_provider,
-    oauth_id,
-    locked_until,
-    failed_login_attempts,
-    created_at,
-    updated_at
-FROM users
+    u.id,
+    u.username,
+    u.email_enc as email,
+    u.fullname_enc as fullname,
+    u.phone_enc as phone,
+    ur.role_type AS role,
+    u.credibility_score,
+    u.status,
+    u.password_hash,
+    u.auth_provider,
+    u.oauth_id,
+    u.locked_until,
+    u.failed_login_attempts,
+    u.created_at,
+    u.last_updated_at AS updated_at
+FROM users u
+LEFT JOIN user_roles ur ON u.id = ur.user_id
 WHERE 
-    (id = $2::uuid)
-    OR (NULLIF($3::text, '') IS NOT NULL AND pgp_sym_decrypt(email, $1::text) = $3::text)
-    OR (NULLIF($4::text, '') IS NOT NULL AND username = $4::text)
+    (u.id = $1)
+    OR (NULLIF($2, '') IS NOT NULL AND u.email_hash = $2)
+    OR (NULLIF($3, '') IS NOT NULL AND u.username = $3)
 LIMIT 1
 `
 
 type GetUserByIdentifierParams struct {
-	Key      string    `db:"key" json:"key"`
-	ID       uuid.UUID `db:"id" json:"id"`
-	Email    string    `db:"email" json:"email"`
-	Username string    `db:"username" json:"username"`
+	ID        uuid.UUID   `db:"id" json:"id"`
+	EmailHash interface{} `db:"email_hash" json:"email_hash"`
+	Username  interface{} `db:"username" json:"username"`
 }
 
 type GetUserByIdentifierRow struct {
 	ID                  uuid.UUID          `db:"id" json:"id"`
-	Email               string             `db:"email" json:"email"`
-	FullName            string             `db:"full_name" json:"full_name"`
-	PhoneNumber         string             `db:"phone_number" json:"phone_number"`
 	Username            string             `db:"username" json:"username"`
+	Email               []byte             `db:"email" json:"email"`
+	Fullname            []byte             `db:"fullname" json:"fullname"`
+	Phone               []byte             `db:"phone" json:"phone"`
 	Role                pgtype.Text        `db:"role" json:"role"`
 	CredibilityScore    pgtype.Int2        `db:"credibility_score" json:"credibility_score"`
 	Status              pgtype.Text        `db:"status" json:"status"`
@@ -275,24 +248,19 @@ type GetUserByIdentifierRow struct {
 	OauthID             pgtype.Text        `db:"oauth_id" json:"oauth_id"`
 	LockedUntil         pgtype.Timestamptz `db:"locked_until" json:"locked_until"`
 	FailedLoginAttempts pgtype.Int4        `db:"failed_login_attempts" json:"failed_login_attempts"`
-	CreatedAt           time.Time          `db:"created_at" json:"created_at"`
+	CreatedAt           pgtype.Timestamptz `db:"created_at" json:"created_at"`
 	UpdatedAt           pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 }
 
 func (q *Queries) GetUserByIdentifier(ctx context.Context, arg GetUserByIdentifierParams) (GetUserByIdentifierRow, error) {
-	row := q.db.QueryRow(ctx, getUserByIdentifier,
-		arg.Key,
-		arg.ID,
-		arg.Email,
-		arg.Username,
-	)
+	row := q.db.QueryRow(ctx, getUserByIdentifier, arg.ID, arg.EmailHash, arg.Username)
 	var i GetUserByIdentifierRow
 	err := row.Scan(
 		&i.ID,
-		&i.Email,
-		&i.FullName,
-		&i.PhoneNumber,
 		&i.Username,
+		&i.Email,
+		&i.Fullname,
+		&i.Phone,
 		&i.Role,
 		&i.CredibilityScore,
 		&i.Status,
@@ -309,36 +277,36 @@ func (q *Queries) GetUserByIdentifier(ctx context.Context, arg GetUserByIdentifi
 
 const getUsers = `-- name: GetUsers :many
 SELECT 
-    id,
-    pgp_sym_decrypt(email, $1::text) AS email,
-    pgp_sym_decrypt(full_name, $1::text) AS fullname,
-    pgp_sym_decrypt(phone_number, $1::text) AS phone_number,
-    username,
-    role,
-    credibility_score,
-    status,
-    is_email_verified, 
-    is_phone_verified,
-    last_login_at,
-    created_at,
-    updated_at
-FROM users
-WHERE deleted_at IS NULL 
-ORDER BY created_at DESC
-OFFSET $2 LIMIT $3
+    u.id,
+    u.email_enc as email,
+    u.fullname_enc as fullname,
+    u.phone_enc as phone,
+    u.username,
+    ur.role_type AS role,
+    u.credibility_score,
+    u.status,
+    u.is_email_verified, 
+    u.is_phone_verified,
+    u.last_login_at,
+    u.created_at,
+    u.last_updated_at AS updated_at
+FROM users u
+LEFT JOIN user_roles ur ON u.id = ur.user_id
+WHERE u.deleted_at IS NULL 
+ORDER BY u.created_at DESC
+OFFSET $1 LIMIT $2
 `
 
 type GetUsersParams struct {
-	Key         string `db:"key" json:"key"`
-	OffsetCount int32  `db:"offset_count" json:"offset_count"`
-	LimitCount  int32  `db:"limit_count" json:"limit_count"`
+	OffsetCount int32 `db:"offset_count" json:"offset_count"`
+	LimitCount  int32 `db:"limit_count" json:"limit_count"`
 }
 
 type GetUsersRow struct {
 	ID               uuid.UUID          `db:"id" json:"id"`
-	Email            string             `db:"email" json:"email"`
-	Fullname         string             `db:"fullname" json:"fullname"`
-	PhoneNumber      string             `db:"phone_number" json:"phone_number"`
+	Email            []byte             `db:"email" json:"email"`
+	Fullname         []byte             `db:"fullname" json:"fullname"`
+	Phone            []byte             `db:"phone" json:"phone"`
 	Username         string             `db:"username" json:"username"`
 	Role             pgtype.Text        `db:"role" json:"role"`
 	CredibilityScore pgtype.Int2        `db:"credibility_score" json:"credibility_score"`
@@ -346,12 +314,12 @@ type GetUsersRow struct {
 	IsEmailVerified  pgtype.Bool        `db:"is_email_verified" json:"is_email_verified"`
 	IsPhoneVerified  pgtype.Bool        `db:"is_phone_verified" json:"is_phone_verified"`
 	LastLoginAt      pgtype.Timestamptz `db:"last_login_at" json:"last_login_at"`
-	CreatedAt        time.Time          `db:"created_at" json:"created_at"`
+	CreatedAt        pgtype.Timestamptz `db:"created_at" json:"created_at"`
 	UpdatedAt        pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 }
 
 func (q *Queries) GetUsers(ctx context.Context, arg GetUsersParams) ([]GetUsersRow, error) {
-	rows, err := q.db.Query(ctx, getUsers, arg.Key, arg.OffsetCount, arg.LimitCount)
+	rows, err := q.db.Query(ctx, getUsers, arg.OffsetCount, arg.LimitCount)
 	if err != nil {
 		return nil, err
 	}
@@ -363,7 +331,7 @@ func (q *Queries) GetUsers(ctx context.Context, arg GetUsersParams) ([]GetUsersR
 			&i.ID,
 			&i.Email,
 			&i.Fullname,
-			&i.PhoneNumber,
+			&i.Phone,
 			&i.Username,
 			&i.Role,
 			&i.CredibilityScore,
@@ -387,7 +355,7 @@ func (q *Queries) GetUsers(ctx context.Context, arg GetUsersParams) ([]GetUsersR
 const incrementFailedLoginCount = `-- name: IncrementFailedLoginCount :exec
 UPDATE users 
 SET failed_login_attempts = failed_login_attempts + 1
-WHERE id = $1::uuid
+WHERE id = $1
 `
 
 func (q *Queries) IncrementFailedLoginCount(ctx context.Context, id uuid.UUID) error {
@@ -398,7 +366,7 @@ func (q *Queries) IncrementFailedLoginCount(ctx context.Context, id uuid.UUID) e
 const restoreUser = `-- name: RestoreUser :exec
 UPDATE users 
 SET deleted_at = NULL
-WHERE id = $1::uuid
+WHERE id = $1
 `
 
 func (q *Queries) RestoreUser(ctx context.Context, id uuid.UUID) error {
@@ -408,31 +376,30 @@ func (q *Queries) RestoreUser(ctx context.Context, id uuid.UUID) error {
 
 const searchUser = `-- name: SearchUser :many
 SELECT 
-    id, 
-    username,
-    pgp_sym_decrypt(email, $1::text) AS email,
-    pgp_sym_decrypt(full_name, $1::text) AS fullname,
-    pgp_sym_decrypt(phone_number, $1::text) AS phone_number,
-    role, 
-    is_email_verified, 
-    is_phone_verified,
-    last_login_at, 
-    created_at, 
-    updated_at
-FROM users 
-WHERE deleted_at IS NULL
+    u.id, 
+    u.username,
+    u.email_enc as email,
+    u.fullname_enc as fullname,
+    u.phone_enc as phone,
+    ur.role_type AS role,
+    u.credibility_score,
+    u.status,
+    u.is_email_verified, 
+    u.is_phone_verified,
+    u.last_login_at,
+    u.created_at,
+    u.last_updated_at AS updated_at
+FROM users u
+LEFT JOIN user_roles ur ON u.id = ur.user_id
+WHERE u.deleted_at IS NULL
 AND (
-    id = $2::uuid OR
-    username ILIKE '%' || $3::text || '%' OR
-    pgp_sym_decrypt(email, $1::text) ILIKE '%' || $3::text || '%' OR
-    pgp_sym_decrypt(full_name, $1::text) ILIKE '%' || $3::text || '%' OR
-    pgp_sym_decrypt(phone_number, $1::text) ILIKE '%' || $3::text || '%'
+    u.id = $1 OR
+    u.username ILIKE '%' || $2::text || '%'
 )
-OFFSET $4 LIMIT $5
+OFFSET $3 LIMIT $4
 `
 
 type SearchUserParams struct {
-	Key         string    `db:"key" json:"key"`
 	ID          uuid.UUID `db:"id" json:"id"`
 	Query       string    `db:"query" json:"query"`
 	OffsetCount int32     `db:"offset_count" json:"offset_count"`
@@ -440,22 +407,23 @@ type SearchUserParams struct {
 }
 
 type SearchUserRow struct {
-	ID              uuid.UUID          `db:"id" json:"id"`
-	Username        string             `db:"username" json:"username"`
-	Email           string             `db:"email" json:"email"`
-	Fullname        string             `db:"fullname" json:"fullname"`
-	PhoneNumber     string             `db:"phone_number" json:"phone_number"`
-	Role            pgtype.Text        `db:"role" json:"role"`
-	IsEmailVerified pgtype.Bool        `db:"is_email_verified" json:"is_email_verified"`
-	IsPhoneVerified pgtype.Bool        `db:"is_phone_verified" json:"is_phone_verified"`
-	LastLoginAt     pgtype.Timestamptz `db:"last_login_at" json:"last_login_at"`
-	CreatedAt       time.Time          `db:"created_at" json:"created_at"`
-	UpdatedAt       pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	ID               uuid.UUID          `db:"id" json:"id"`
+	Username         string             `db:"username" json:"username"`
+	Email            []byte             `db:"email" json:"email"`
+	Fullname         []byte             `db:"fullname" json:"fullname"`
+	Phone            []byte             `db:"phone" json:"phone"`
+	Role             pgtype.Text        `db:"role" json:"role"`
+	CredibilityScore pgtype.Int2        `db:"credibility_score" json:"credibility_score"`
+	Status           pgtype.Text        `db:"status" json:"status"`
+	IsEmailVerified  pgtype.Bool        `db:"is_email_verified" json:"is_email_verified"`
+	IsPhoneVerified  pgtype.Bool        `db:"is_phone_verified" json:"is_phone_verified"`
+	LastLoginAt      pgtype.Timestamptz `db:"last_login_at" json:"last_login_at"`
+	CreatedAt        pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt        pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 }
 
 func (q *Queries) SearchUser(ctx context.Context, arg SearchUserParams) ([]SearchUserRow, error) {
 	rows, err := q.db.Query(ctx, searchUser,
-		arg.Key,
 		arg.ID,
 		arg.Query,
 		arg.OffsetCount,
@@ -473,8 +441,10 @@ func (q *Queries) SearchUser(ctx context.Context, arg SearchUserParams) ([]Searc
 			&i.Username,
 			&i.Email,
 			&i.Fullname,
-			&i.PhoneNumber,
+			&i.Phone,
 			&i.Role,
+			&i.CredibilityScore,
+			&i.Status,
 			&i.IsEmailVerified,
 			&i.IsPhoneVerified,
 			&i.LastLoginAt,
@@ -494,7 +464,7 @@ func (q *Queries) SearchUser(ctx context.Context, arg SearchUserParams) ([]Searc
 const updateLastLogin = `-- name: UpdateLastLogin :exec
 UPDATE users 
 SET last_login_at = NOW()
-WHERE id = $1::uuid
+WHERE id = $1
 `
 
 func (q *Queries) UpdateLastLogin(ctx context.Context, id uuid.UUID) error {
@@ -503,58 +473,105 @@ func (q *Queries) UpdateLastLogin(ctx context.Context, id uuid.UUID) error {
 }
 
 const updateUser = `-- name: UpdateUser :exec
-UPDATE users 
-SET 
-    email = CASE 
-        WHEN $1::text IS NOT NULL AND $1::text != '' 
-        THEN pgp_sym_encrypt($1::text, $2::text)
-        ELSE email 
+UPDATE users
+SET
+    username = CASE
+        WHEN $1::text IS NOT NULL
+            AND $1::text != ''
+            AND $1::text != username
+        THEN $1::text
+        ELSE username
     END,
-    full_name = CASE
-        WHEN $3::text IS NOT NULL AND $3::text != ''
-        THEN pgp_sym_encrypt($3::text, $2::text)
-        ELSE full_name
+    email_hash = CASE
+        WHEN $2::text IS NOT NULL
+            AND $2::text != ''
+            AND $2::text != email_hash
+        THEN $2::text
+        ELSE email_hash
     END,
-    phone_number = CASE
-        WHEN $4::text IS NOT NULL AND $4::text != ''
-        THEN pgp_sym_encrypt($4::text, $2::text)
-        ELSE phone_number
+    email_enc = CASE
+        WHEN $3::bytea IS NOT NULL
+            AND $3::bytea != email_enc
+        THEN $3::bytea
+        ELSE email_enc
     END,
-    role = CASE 
-        WHEN $5::text IS NOT NULL AND $5::text IN ('citizen', 'admin', 'superadmin') 
-        THEN $5::text 
-        ELSE role 
+    fullname_hash = CASE
+        WHEN $4::text IS NOT NULL
+            AND $4::text != ''
+            AND $4::text != fullname_hash
+        THEN $4::text
+        ELSE fullname_hash
+    END,
+    fullname_enc = CASE
+        WHEN $5::bytea IS NOT NULL
+            AND $5::bytea != fullname_enc
+        THEN $5::bytea
+        ELSE fullname_enc
+    END,
+    phone_hash = CASE
+        WHEN $6::text IS NOT NULL
+            AND $6::text != ''
+            AND $6::text != phone_hash
+        THEN $6::text
+        ELSE phone_hash
+    END,
+    phone_enc = CASE
+        WHEN $7::bytea IS NOT NULL
+            AND $7::bytea != phone_enc
+        THEN $7::bytea
+        ELSE phone_enc
     END,
     status = CASE
-        WHEN $6::text IS NOT NULL AND $6::text IN ('probation', 'regular', 'suspended')
-        THEN $6::text
+        WHEN $8::text IS NOT NULL
+            AND $8::text != ''
+            AND $8::text != status
+        THEN $8::text
         ELSE status
     END,
-    credibility_score = COALESCE($7::smallint, credibility_score),
-    updated_at = CURRENT_TIMESTAMP
-WHERE id = $8::uuid
+    last_updated_at = CASE
+        WHEN (
+            ($1::text IS NOT NULL AND $1::text != '' AND $1::text != username)
+            OR ($2::text IS NOT NULL AND $2::text != '' AND $2::text != email_hash)
+            OR ($3::bytea IS NOT NULL AND $3::bytea != email_enc)
+            OR ($4::text IS NOT NULL AND $4::text != '' AND $4::text != fullname_hash)
+            OR ($5::bytea IS NOT NULL AND $5::bytea != fullname_enc)
+            OR ($6::text IS NOT NULL AND $6::text != '' AND $6::text != phone_hash)
+            OR ($7::bytea IS NOT NULL AND $7::bytea != phone_enc)
+            OR ($8::text IS NOT NULL AND $8::text != '' AND $8::text != status)
+            OR ($9::smallint IS NOT NULL AND $9::smallint != credibility_score)
+        ) THEN NOW()
+        ELSE last_updated_at
+    END,
+    last_updated_by = $10::uuid
+WHERE id = $11
 `
 
 type UpdateUserParams struct {
-	Email            string    `db:"email" json:"email"`
-	Key              string    `db:"key" json:"key"`
-	FullName         string    `db:"full_name" json:"full_name"`
-	PhoneNumber      string    `db:"phone_number" json:"phone_number"`
-	Role             string    `db:"role" json:"role"`
+	Username         string    `db:"username" json:"username"`
+	EmailHash        string    `db:"email_hash" json:"email_hash"`
+	EmailEnc         []byte    `db:"email_enc" json:"email_enc"`
+	FullnameHash     string    `db:"fullname_hash" json:"fullname_hash"`
+	FullnameEnc      []byte    `db:"fullname_enc" json:"fullname_enc"`
+	PhoneHash        string    `db:"phone_hash" json:"phone_hash"`
+	PhoneEnc         []byte    `db:"phone_enc" json:"phone_enc"`
 	Status           string    `db:"status" json:"status"`
 	CredibilityScore int16     `db:"credibility_score" json:"credibility_score"`
+	UpdatedBy        uuid.UUID `db:"updated_by" json:"updated_by"`
 	ID               uuid.UUID `db:"id" json:"id"`
 }
 
 func (q *Queries) UpdateUser(ctx context.Context, arg UpdateUserParams) error {
 	_, err := q.db.Exec(ctx, updateUser,
-		arg.Email,
-		arg.Key,
-		arg.FullName,
-		arg.PhoneNumber,
-		arg.Role,
+		arg.Username,
+		arg.EmailHash,
+		arg.EmailEnc,
+		arg.FullnameHash,
+		arg.FullnameEnc,
+		arg.PhoneHash,
+		arg.PhoneEnc,
 		arg.Status,
 		arg.CredibilityScore,
+		arg.UpdatedBy,
 		arg.ID,
 	)
 	return err

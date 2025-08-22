@@ -2,11 +2,25 @@ package pkg
 
 import (
 	"context"
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/rand"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
+	"strings"
 	"time"
 
 	"github.com/go-playground/validator/v10"
+	"golang.org/x/crypto/bcrypt"
+)
+
+var (
+	ErrInvalidKey     = errors.New("invalid key")
+	ErrEncryptionFail = errors.New("encryption failed")
+	ErrDecryptionFail = errors.New("decryption failed")
 )
 
 func CreateContext(timeout time.Duration) (context.Context, context.CancelFunc) {
@@ -96,4 +110,77 @@ func ParseMetadata(raw []byte) (map[string]interface{}, error) {
 		}
 	}
 	return nil, errors.New("invalid metadata JSON format")
+}
+
+func HashPassword(password string) (string, error) {
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), 12)
+	return string(hash), err
+}
+
+func VerifyPassword(hashedPassword, password string) error {
+	return bcrypt.CompareHashAndPassword([]byte(hashedPassword), []byte(password))
+}
+
+func HashValue(value string) string {
+	if value == "" {
+		return ""
+	}
+
+	h := sha256.Sum256([]byte(strings.ToLower(value)))
+
+	// Hex string
+	return fmt.Sprintf("%x", h)
+}
+
+func Encrypt(plaintext []byte, encKey []byte) ([]byte, error) {
+	if len(plaintext) == 0 {
+		return nil, nil // Nullability: Skip for empty
+	}
+
+	block, err := aes.NewCipher(encKey)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrInvalidKey, err)
+	}
+
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrEncryptionFail, err)
+	}
+
+	nonce := make([]byte, gcm.NonceSize())
+	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
+		return nil, fmt.Errorf("%w: nonce generation failed: %v", ErrEncryptionFail, err)
+	}
+
+	ciphertext := gcm.Seal(nonce, nonce, plaintext, nil)
+
+	return ciphertext, nil
+}
+
+func Decrypt(ciphertext []byte, encKey []byte) ([]byte, error) {
+	if len(ciphertext) == 0 {
+		return nil, nil
+	}
+
+	block, err := aes.NewCipher(encKey)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrInvalidKey, err)
+	}
+
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrDecryptionFail, err)
+	}
+
+	if len(ciphertext) < gcm.NonceSize() {
+		return nil, fmt.Errorf("%w: invalid ciphertext", ErrDecryptionFail)
+	}
+
+	nonce, ciphertext := ciphertext[:gcm.NonceSize()], ciphertext[gcm.NonceSize():]
+	plaintext, err := gcm.Open(nil, nonce, ciphertext, nil)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrDecryptionFail, err)
+	}
+
+	return plaintext, nil
 }

@@ -3,7 +3,9 @@ package routes
 import (
 	"hubku/lapor_warga_be_v2/internal/controllers"
 	"hubku/lapor_warga_be_v2/internal/modules/auth"
+	userroles "hubku/lapor_warga_be_v2/internal/modules/user_roles"
 	"hubku/lapor_warga_be_v2/internal/modules/users"
+	"hubku/lapor_warga_be_v2/pkg"
 	"log"
 
 	"github.com/go-playground/validator/v10"
@@ -22,13 +24,19 @@ func Routing(r fiber.Router, db *pgxpool.Pool) {
 
 	validator := validator.New()
 
-	userRepo := users.NewUserRepository(db, encKey)
+	userRepo := users.NewUserRepository(db)
+	roleRepo := userroles.NewUserRolesRepository(db)
 
-	userService := users.NewUserService(userRepo)
-	authService := auth.NewAuthService(userService)
+	userService := users.NewUserService(userRepo, roleRepo, encKey)
+	authService := auth.NewAuthService(userService, encKey)
 
 	userController := controllers.NewUserController(userService, validator)
 	authController := controllers.NewAuthController(authService, validator)
+
+	// Initialize root user
+	if err := userService.InitializeRootUser(); err != nil {
+		log.Fatal("Failed to initialize root user:", err)
+	}
 
 	// API versioning
 	versioning := r.Group("/api/v1")
@@ -42,14 +50,14 @@ func Routing(r fiber.Router, db *pgxpool.Pool) {
 	userRoutes := versioning.Group("/users", JWTMiddleware(authService))
 	{
 		userRoutes.Get("/list", userController.GetMasterUser)
-		userRoutes.Post("/create", RoleMiddleware("admin", "superadmin"), authController.Register)
+		userRoutes.Post("/create", RoleMiddleware(string(pkg.RoleAdmin)), authController.Register)
 		userRoutes.Get("/me", userController.GetCurrentUser)
 		userRoutes.Patch("/me", userController.UpdateCurrentUser)
-		userRoutes.Get("/search", RoleMiddleware("admin", "superadmin"), userController.SearchUser)
-		userRoutes.Get("/:id", RoleMiddleware("admin", "superadmin"), userController.GetUserByID)
-		userRoutes.Post("/restore/:id", RoleMiddleware("admin", "superadmin"), userController.RestoreUser)
-		userRoutes.Patch("/:id", RoleMiddleware("admin", "superadmin"), userController.UpdateUser)
-		userRoutes.Delete("/:id", RoleMiddleware("admin", "superadmin"), userController.DeleteUser)
+		userRoutes.Get("/search", RoleMiddleware(string(pkg.RoleAdmin)), userController.SearchUser)
+		userRoutes.Get("/:id", RoleMiddleware(string(pkg.RoleAdmin)), userController.GetUserByID)
+		userRoutes.Post("/restore/:id", RoleMiddleware(string(pkg.RoleAdmin)), userController.RestoreUser)
+		userRoutes.Patch("/:id", RoleMiddleware(string(pkg.RoleAdmin)), userController.UpdateUser)
+		userRoutes.Delete("/:id", RoleMiddleware(string(pkg.RoleAdmin)), userController.DeleteUser)
 	}
 }
 

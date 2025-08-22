@@ -11,7 +11,7 @@ import (
 type UserRepository interface {
 	IncrementFailedLogins(id uuid.UUID) error
 	CheckUserExists(arg db.CheckUserExistsParams) (bool, error)
-	CreateUser(req db.CreateUserParams) (db.CreateUserRow, error)
+	CreateUser(req db.CreateUserParams) (uuid.UUID, error)
 	GetUsers(arg db.GetUsersParams) ([]db.GetUsersRow, error)
 	UpdateUser(arg db.UpdateUserParams) error
 	DeleteUser(id uuid.UUID) error
@@ -23,29 +23,24 @@ type UserRepository interface {
 }
 
 type repository struct {
-	encKey  string
 	queries *db.Queries
 }
 
-func NewUserRepository(pool *pgxpool.Pool, encKey string) UserRepository {
+func NewUserRepository(pool *pgxpool.Pool) UserRepository {
 	return &repository{
 		queries: db.New(pool),
-		encKey:  encKey,
 	}
 }
 
 func (r *repository) GetUsers(arg db.GetUsersParams) ([]db.GetUsersRow, error) {
-	arg.Key = r.encKey
 	return r.queries.GetUsers(context.Background(), arg)
 }
 
-func (r *repository) CreateUser(arg db.CreateUserParams) (db.CreateUserRow, error) {
-	arg.Key = r.encKey
+func (r *repository) CreateUser(arg db.CreateUserParams) (uuid.UUID, error) {
 	return r.queries.CreateUser(context.Background(), arg)
 }
 
 func (r *repository) UpdateUser(arg db.UpdateUserParams) error {
-	arg.Key = r.encKey
 	return r.queries.UpdateUser(context.Background(), arg)
 }
 
@@ -58,7 +53,6 @@ func (r *repository) IncrementFailedLogins(id uuid.UUID) error {
 }
 
 func (r *repository) CheckUserExists(arg db.CheckUserExistsParams) (bool, error) {
-	arg.Key = r.encKey
 	return r.queries.CheckUserExists(context.Background(), arg)
 }
 
@@ -71,18 +65,13 @@ func (r *repository) RestoreUser(id uuid.UUID) error {
 }
 
 func (r *repository) SearchUser(arg db.SearchUserParams) ([]db.SearchUserRow, error) {
-	arg.Key = r.encKey
 	return r.queries.SearchUser(context.Background(), arg)
 }
 
 func (r *repository) GetUserByIdentifier(arg db.GetUserByIdentifierParams) (db.GetUserByIdentifierRow, error) {
-	arg.Key = r.encKey
 	return r.queries.GetUserByIdentifier(context.Background(), arg)
 }
 
 func (r *repository) GetUserByID(id uuid.UUID) (db.GetUserByIDRow, error) {
-	return r.queries.GetUserByID(context.Background(), db.GetUserByIDParams{
-		ID:  id,
-		Key: r.encKey,
-	})
+	return r.queries.GetUserByID(context.Background(), id)
 }

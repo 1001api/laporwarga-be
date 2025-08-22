@@ -5,31 +5,69 @@
 package db
 
 import (
-	"time"
-
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type AuditLog struct {
+	ID          uuid.UUID          `db:"id" json:"id"`
+	EntityName  string             `db:"entity_name" json:"entity_name"`
+	EntityID    uuid.UUID          `db:"entity_id" json:"entity_id"`
+	Action      string             `db:"action" json:"action"`
+	Metadata    []byte             `db:"metadata" json:"metadata"`
+	PerformedBy pgtype.UUID        `db:"performed_by" json:"performed_by"`
+	CreatedAt   pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
+type Official struct {
+	ID            uuid.UUID          `db:"id" json:"id"`
+	UserID        uuid.UUID          `db:"user_id" json:"user_id"`
+	Department    pgtype.Text        `db:"department" json:"department"`
+	JobTitle      pgtype.Text        `db:"job_title" json:"job_title"`
+	CreatedAt     pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	CreatedBy     pgtype.UUID        `db:"created_by" json:"created_by"`
+	LastUpdatedAt pgtype.Timestamptz `db:"last_updated_at" json:"last_updated_at"`
+	LastUpdatedBy pgtype.UUID        `db:"last_updated_by" json:"last_updated_by"`
+	DeletedAt     pgtype.Timestamptz `db:"deleted_at" json:"deleted_at"`
+	DeletedBy     pgtype.UUID        `db:"deleted_by" json:"deleted_by"`
+}
+
 type User struct {
 	ID                  uuid.UUID          `db:"id" json:"id"`
-	Email               []byte             `db:"email" json:"email"`
-	FullName            []byte             `db:"full_name" json:"full_name"`
+	EmailHash           string             `db:"email_hash" json:"email_hash"`
+	EmailEnc            []byte             `db:"email_enc" json:"email_enc"`
+	FullnameHash        pgtype.Text        `db:"fullname_hash" json:"fullname_hash"`
+	FullnameEnc         []byte             `db:"fullname_enc" json:"fullname_enc"`
 	Username            string             `db:"username" json:"username"`
-	PhoneNumber         []byte             `db:"phone_number" json:"phone_number"`
+	PhoneHash           pgtype.Text        `db:"phone_hash" json:"phone_hash"`
+	PhoneEnc            []byte             `db:"phone_enc" json:"phone_enc"`
 	CredibilityScore    pgtype.Int2        `db:"credibility_score" json:"credibility_score"`
 	Status              pgtype.Text        `db:"status" json:"status"`
-	Role                pgtype.Text        `db:"role" json:"role"`
 	AuthProvider        pgtype.Text        `db:"auth_provider" json:"auth_provider"`
 	OauthID             pgtype.Text        `db:"oauth_id" json:"oauth_id"`
 	PasswordHash        pgtype.Text        `db:"password_hash" json:"password_hash"`
+	PasswordChangedAt   pgtype.Timestamptz `db:"password_changed_at" json:"password_changed_at"`
 	IsEmailVerified     pgtype.Bool        `db:"is_email_verified" json:"is_email_verified"`
 	IsPhoneVerified     pgtype.Bool        `db:"is_phone_verified" json:"is_phone_verified"`
 	LastLoginAt         pgtype.Timestamptz `db:"last_login_at" json:"last_login_at"`
-	PasswordChangedAt   pgtype.Timestamptz `db:"password_changed_at" json:"password_changed_at"`
 	FailedLoginAttempts pgtype.Int4        `db:"failed_login_attempts" json:"failed_login_attempts"`
 	LockedUntil         pgtype.Timestamptz `db:"locked_until" json:"locked_until"`
-	CreatedAt           time.Time          `db:"created_at" json:"created_at"`
-	UpdatedAt           pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	CreatedAt           pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	CreatedBy           pgtype.UUID        `db:"created_by" json:"created_by"`
+	LastUpdatedAt       pgtype.Timestamptz `db:"last_updated_at" json:"last_updated_at"`
+	LastUpdatedBy       pgtype.UUID        `db:"last_updated_by" json:"last_updated_by"`
 	DeletedAt           pgtype.Timestamptz `db:"deleted_at" json:"deleted_at"`
+	DeletedBy           pgtype.UUID        `db:"deleted_by" json:"deleted_by"`
+}
+
+type UserRole struct {
+	ID            uuid.UUID          `db:"id" json:"id"`
+	UserID        uuid.UUID          `db:"user_id" json:"user_id"`
+	RoleType      string             `db:"role_type" json:"role_type"`
+	CreatedAt     pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	CreatedBy     pgtype.UUID        `db:"created_by" json:"created_by"`
+	LastUpdatedAt pgtype.Timestamptz `db:"last_updated_at" json:"last_updated_at"`
+	LastUpdatedBy pgtype.UUID        `db:"last_updated_by" json:"last_updated_by"`
+	DeletedAt     pgtype.Timestamptz `db:"deleted_at" json:"deleted_at"`
+	DeletedBy     pgtype.UUID        `db:"deleted_by" json:"deleted_by"`
 }
