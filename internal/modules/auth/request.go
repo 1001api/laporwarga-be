@@ -11,7 +11,7 @@ type RegisterRequest struct {
 	Fullname    string `json:"fullname" form:"fullname" validate:"required,min=2,max=100"`
 	Password    string `json:"password" form:"password" validate:"required,min=8"`
 	PhoneNumber string `json:"phone_number" form:"phone_number" validate:"omitempty,min=5,max=50"`
-	Role        string `json:"role" form:"role" validate:"omitempty,oneof=citizen admin superadmin"`
+	Role        string `json:"role" form:"role" validate:"omitempty"`
 }
 
 type RefreshRequest struct {

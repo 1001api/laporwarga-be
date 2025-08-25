@@ -91,6 +91,25 @@ func (s *service) InitializeRootUser() error {
 		return errors.New("ROOT_USERNAME, ROOT_PASSWORD, ROOT_EMAIL, ROOT_FULLNAME, ROOT_PHONE_NUMBER are required")
 	}
 
+	// check if role admin exists
+	roleExist, err := s.roleSvc.GetRoleByName(string(pkg.RoleAdmin))
+	if err != nil && !strings.Contains(err.Error(), "no rows in result set") {
+		log.Println("Failed to check role admin:", err)
+		return err
+	}
+
+	if roleExist.ID == uuid.Nil {
+		// auto create role admin
+		_, err = s.roleSvc.CreateRole(uuid.Nil, db.CreateRoleParams{
+			Name:        string(pkg.RoleAdmin),
+			Description: "Default admin role",
+		})
+		if err != nil {
+			log.Println("Failed to create role admin:", err)
+			return err
+		}
+	}
+
 	_, err = s.CreateUser(uuid.Nil, CreateUserRequest{
 		Username:     username,
 		PasswordHash: passwordHash,
@@ -188,22 +207,13 @@ func (s *service) CreateUser(currentUserID uuid.UUID, params CreateUserRequest) 
 	var roleID uuid.UUID
 
 	// check if role exists
-	roleExist, err := s.roleSvc.GetRoleByName(string(pkg.RoleAdmin))
+	roleExist, err := s.roleSvc.GetRoleByName(params.Role)
 	if err != nil && !strings.Contains(err.Error(), "no rows in result set") {
 		return uuid.UUID{}, err
 	}
 
 	if roleExist.ID == uuid.Nil {
-		// if role does not exist, create it first
-		createdID, err := s.roleSvc.CreateRole(currentUserID, db.CreateRoleParams{
-			Name:        string(pkg.RoleAdmin),
-			Description: "Default admin role",
-		})
-		if err != nil {
-			return uuid.UUID{}, err
-		}
-
-		roleID = createdID
+		return uuid.UUID{}, errors.New("role does not exist")
 	} else {
 		roleID = roleExist.ID
 	}

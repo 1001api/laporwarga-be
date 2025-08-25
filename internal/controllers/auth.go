@@ -148,7 +148,46 @@ func (c *AuthController) Login(ctx *fiber.Ctx) error {
 		)
 	}
 
-	resp, err := c.authService.Login(req)
+	resp, err := c.authService.Login(req, false)
+
+	if err != nil {
+		return ctx.Status(fiber.StatusUnauthorized).JSON(
+			fiber.Map{
+				"error": err.Error(),
+				"meta": fiber.Map{
+					"duration": time.Since(startTime).String(),
+				},
+			},
+		)
+	}
+
+	return ctx.JSON(
+		fiber.Map{
+			"data": resp,
+			"meta": fiber.Map{
+				"duration": time.Since(startTime).String(),
+			},
+		},
+	)
+}
+
+func (c *AuthController) LoginMobile(ctx *fiber.Ctx) error {
+	startTime := time.Now()
+
+	var req auth.LoginRequest
+
+	if err := ctx.BodyParser(&req); err != nil {
+		return ctx.Status(fiber.StatusBadRequest).JSON(
+			fiber.Map{
+				"error": "invalid json body",
+				"meta": fiber.Map{
+					"duration": time.Since(startTime).String(),
+				},
+			},
+		)
+	}
+
+	resp, err := c.authService.Login(req, true)
 
 	if err != nil {
 		return ctx.Status(fiber.StatusUnauthorized).JSON(

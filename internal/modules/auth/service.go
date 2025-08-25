@@ -16,7 +16,7 @@ import (
 )
 
 type AuthService interface {
-	Login(req LoginRequest) (*LoginResponse, error)
+	Login(req LoginRequest, isMobile bool) (*LoginResponse, error)
 	ValidateToken(tokenString string) (*Claims, error)
 	GenerateToken(user db.GetUserByIdentifierRow) (string, error)
 	Register(currentUserID uuid.UUID, req RegisterRequest) (uuid.UUID, error)
@@ -47,7 +47,7 @@ func NewAuthService(userService users.UserService, logService auditlogs.LogsServ
 	}
 }
 
-func (s *service) Login(req LoginRequest) (*LoginResponse, error) {
+func (s *service) Login(req LoginRequest, isMobile bool) (*LoginResponse, error) {
 	if req.Identifier == "" || req.Password == "" {
 		return nil, errors.New("username and password are required")
 	}
@@ -55,6 +55,18 @@ func (s *service) Login(req LoginRequest) (*LoginResponse, error) {
 	user, err := s.userService.GetUserByIdentifier(req.Identifier)
 	if err != nil {
 		return nil, errors.New("invalid credentials")
+	}
+
+	// check if user role is citizen
+	// this is to prevent citizen from logging in using web route.
+	if isMobile {
+		if user.RoleName.String != string(pkg.RoleCitizen) {
+			return nil, errors.New("only citizen can login to this route")
+		}
+	} else {
+		if user.RoleName.String == string(pkg.RoleCitizen) {
+			return nil, errors.New("citizen cannot login to this route")
+		}
 	}
 
 	if cast.ToTime(user.LockedUntil).After(time.Now()) {

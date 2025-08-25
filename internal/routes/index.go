@@ -50,6 +50,7 @@ func Routing(r fiber.Router, db *pgxpool.Pool) {
 	public := versioning.Group("/auth")
 	{
 		public.Post("/login", authController.Login)
+		public.Post("/m/login", authController.LoginMobile)
 		public.Post("/refresh", authController.Refresh)
 	}
 
