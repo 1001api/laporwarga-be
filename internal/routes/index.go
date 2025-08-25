@@ -2,6 +2,7 @@ package routes
 
 import (
 	"hubku/lapor_warga_be_v2/internal/controllers"
+	"hubku/lapor_warga_be_v2/internal/modules/auditlogs"
 	"hubku/lapor_warga_be_v2/internal/modules/auth"
 	userroles "hubku/lapor_warga_be_v2/internal/modules/user_roles"
 	"hubku/lapor_warga_be_v2/internal/modules/users"
@@ -26,11 +27,14 @@ func Routing(r fiber.Router, db *pgxpool.Pool) {
 
 	userRepo := users.NewUserRepository(db)
 	roleRepo := userroles.NewUserRolesRepository(db)
+	logRepo := auditlogs.NewLogsRepository(db)
 
-	userRolesService := userroles.NewUserRolesService(roleRepo)
-	userService := users.NewUserService(userRepo, userRolesService, encKey)
-	authService := auth.NewAuthService(userService, encKey)
+	logService := auditlogs.NewLogsService(logRepo)
+	userRolesService := userroles.NewUserRolesService(roleRepo, logService)
+	userService := users.NewUserService(userRepo, userRolesService, logService, encKey)
+	authService := auth.NewAuthService(userService, logService, encKey)
 
+	logsController := controllers.NewLogsController(logService)
 	userController := controllers.NewUserController(userService, validator)
 	authController := controllers.NewAuthController(authService, validator)
 	userRolesController := controllers.NewUserRolesController(userRolesService, validator)
@@ -71,6 +75,11 @@ func Routing(r fiber.Router, db *pgxpool.Pool) {
 		rolesRoutes.Get("/name/:name", userRolesController.GetRoleByName)
 		rolesRoutes.Put("/:id", userRolesController.UpdateRole)
 		rolesRoutes.Delete("/:id", userRolesController.RemoveRole)
+	}
+
+	logsRoutes := versioning.Group("/logs", JWTMiddleware(authService), RoleMiddleware(string(pkg.RoleAdmin)))
+	{
+		logsRoutes.Get("/list", logsController.ListLogs)
 	}
 }
 

@@ -14,10 +14,12 @@ type Querier interface {
 	AssignRoleToUser(ctx context.Context, arg AssignRoleToUserParams) error
 	CheckRoleExists(ctx context.Context, name string) (bool, error)
 	CheckUserExists(ctx context.Context, arg CheckUserExistsParams) (bool, error)
+	CreateAuditLog(ctx context.Context, arg CreateAuditLogParams) error
 	CreateRole(ctx context.Context, arg CreateRoleParams) (uuid.UUID, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (uuid.UUID, error)
 	DeleteRole(ctx context.Context, id uuid.UUID) error
 	DeleteUser(ctx context.Context, arg DeleteUserParams) error
+	GetAuditLogs(ctx context.Context) ([]AuditLog, error)
 	GetRoleByID(ctx context.Context, id uuid.UUID) (Role, error)
 	GetRoleByName(ctx context.Context, name string) (Role, error)
 	GetUserByEmail(ctx context.Context, emailHash string) (GetUserByEmailRow, error)

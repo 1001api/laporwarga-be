@@ -9,6 +9,7 @@ import (
 	"github.com/go-playground/validator/v10"
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
+	"github.com/spf13/cast"
 )
 
 type UserRolesController struct {
@@ -49,6 +50,19 @@ func (c *UserRolesController) ListAllRoles(ctx *fiber.Ctx) error {
 func (c *UserRolesController) CreateRole(ctx *fiber.Ctx) error {
 	startTime := time.Now()
 
+	currentUserID := ctx.Locals("user_id")
+	currentUserUUID, err := uuid.Parse(cast.ToString(currentUserID))
+	if err != nil {
+		return ctx.Status(fiber.StatusUnauthorized).JSON(
+			fiber.Map{
+				"error": "unauthenticated",
+				"meta": fiber.Map{
+					"duration": time.Since(startTime).String(),
+				},
+			},
+		)
+	}
+
 	var req userroles.CreateRoleRequest
 
 	if err := ctx.BodyParser(&req); err != nil {
@@ -73,7 +87,7 @@ func (c *UserRolesController) CreateRole(ctx *fiber.Ctx) error {
 		)
 	}
 
-	createdRole, err := c.userRolesSvc.CreateRole(db.CreateRoleParams{
+	createdRole, err := c.userRolesSvc.CreateRole(currentUserUUID, db.CreateRoleParams{
 		Name:        req.Name,
 		Description: req.Description,
 	})
@@ -98,6 +112,19 @@ func (c *UserRolesController) CreateRole(ctx *fiber.Ctx) error {
 
 func (c *UserRolesController) AssignRole(ctx *fiber.Ctx) error {
 	startTime := time.Now()
+
+	currentUserID := ctx.Locals("user_id")
+	currentUserUUID, err := uuid.Parse(cast.ToString(currentUserID))
+	if err != nil {
+		return ctx.Status(fiber.StatusUnauthorized).JSON(
+			fiber.Map{
+				"error": "unauthenticated",
+				"meta": fiber.Map{
+					"duration": time.Since(startTime).String(),
+				},
+			},
+		)
+	}
 
 	id := ctx.Params("id")
 	targetUUID, err := uuid.Parse(id)
@@ -136,7 +163,7 @@ func (c *UserRolesController) AssignRole(ctx *fiber.Ctx) error {
 		)
 	}
 
-	if err := c.userRolesSvc.AssignRoleToUser(db.AssignRoleToUserParams{
+	if err := c.userRolesSvc.AssignRoleToUser(currentUserUUID, db.AssignRoleToUserParams{
 		UserID:   targetUUID,
 		RoleName: req.RoleName,
 	}); err != nil {
@@ -232,6 +259,19 @@ func (c *UserRolesController) GetRoleByName(ctx *fiber.Ctx) error {
 func (c *UserRolesController) UpdateRole(ctx *fiber.Ctx) error {
 	startTime := time.Now()
 
+	currentUserID := ctx.Locals("user_id")
+	currentUserUUID, err := uuid.Parse(cast.ToString(currentUserID))
+	if err != nil {
+		return ctx.Status(fiber.StatusUnauthorized).JSON(
+			fiber.Map{
+				"error": "unauthenticated",
+				"meta": fiber.Map{
+					"duration": time.Since(startTime).String(),
+				},
+			},
+		)
+	}
+
 	id := ctx.Params("id")
 	uid, err := uuid.Parse(id)
 	if err != nil {
@@ -269,7 +309,7 @@ func (c *UserRolesController) UpdateRole(ctx *fiber.Ctx) error {
 		)
 	}
 
-	if err := c.userRolesSvc.UpdateRole(uid, req); err != nil {
+	if err := c.userRolesSvc.UpdateRole(currentUserUUID, uid, req); err != nil {
 		return ctx.Status(fiber.StatusInternalServerError).JSON(
 			fiber.Map{
 				"error": err.Error(),
@@ -291,6 +331,19 @@ func (c *UserRolesController) UpdateRole(ctx *fiber.Ctx) error {
 func (c *UserRolesController) RemoveRole(ctx *fiber.Ctx) error {
 	startTime := time.Now()
 
+	currentUserID := ctx.Locals("user_id")
+	currentUserUUID, err := uuid.Parse(cast.ToString(currentUserID))
+	if err != nil {
+		return ctx.Status(fiber.StatusUnauthorized).JSON(
+			fiber.Map{
+				"error": "unauthenticated",
+				"meta": fiber.Map{
+					"duration": time.Since(startTime).String(),
+				},
+			},
+		)
+	}
+
 	id := ctx.Params("id")
 	uid, err := uuid.Parse(id)
 	if err != nil {
@@ -304,7 +357,7 @@ func (c *UserRolesController) RemoveRole(ctx *fiber.Ctx) error {
 		)
 	}
 
-	if err := c.userRolesSvc.RemoveRole(uid); err != nil {
+	if err := c.userRolesSvc.RemoveRole(currentUserUUID, uid); err != nil {
 		return ctx.Status(fiber.StatusInternalServerError).JSON(
 			fiber.Map{
 				"error": err.Error(),

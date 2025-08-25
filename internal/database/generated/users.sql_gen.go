@@ -581,16 +581,10 @@ SET
         THEN $8::text
         ELSE status
     END,
-    role_id = CASE
-        WHEN $9::uuid IS NOT NULL
-            AND $9::uuid != role_id
-        THEN $9::uuid
-        ELSE role_id
-    END,
     credibility_score = CASE
-        WHEN $10::smallint IS NOT NULL
-            AND $10::smallint != credibility_score
-        THEN $10::smallint
+        WHEN $9::smallint IS NOT NULL
+            AND $9::smallint != credibility_score
+        THEN $9::smallint
         ELSE credibility_score
     END,
     last_updated_at = CASE
@@ -603,13 +597,12 @@ SET
             OR ($6::text IS NOT NULL AND $6::text != '' AND $6::text != phone_hash)
             OR ($7::bytea IS NOT NULL AND $7::bytea != phone_enc)
             OR ($8::text IS NOT NULL AND $8::text != '' AND $8::text != status)
-            OR ($9::uuid IS NOT NULL AND $9::uuid != role_id)
-            OR ($10::smallint IS NOT NULL AND $10::smallint != credibility_score)
+            OR ($9::smallint IS NOT NULL AND $9::smallint != credibility_score)
         ) THEN CURRENT_TIMESTAMP
         ELSE last_updated_at
     END,
-    last_updated_by = $11::uuid
-WHERE id = $12
+    last_updated_by = $10::uuid
+WHERE id = $11
 `
 
 type UpdateUserParams struct {
@@ -621,7 +614,6 @@ type UpdateUserParams struct {
 	PhoneHash        string    `db:"phone_hash" json:"phone_hash"`
 	PhoneEnc         []byte    `db:"phone_enc" json:"phone_enc"`
 	Status           string    `db:"status" json:"status"`
-	RoleID           uuid.UUID `db:"role_id" json:"role_id"`
 	CredibilityScore int16     `db:"credibility_score" json:"credibility_score"`
 	UpdatedBy        uuid.UUID `db:"updated_by" json:"updated_by"`
 	ID               uuid.UUID `db:"id" json:"id"`
@@ -637,7 +629,6 @@ func (q *Queries) UpdateUser(ctx context.Context, arg UpdateUserParams) error {
 		arg.PhoneHash,
 		arg.PhoneEnc,
 		arg.Status,
-		arg.RoleID,
 		arg.CredibilityScore,
 		arg.UpdatedBy,
 		arg.ID,

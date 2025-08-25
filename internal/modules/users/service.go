@@ -3,6 +3,7 @@ package users
 import (
 	"errors"
 	db "hubku/lapor_warga_be_v2/internal/database/generated"
+	"hubku/lapor_warga_be_v2/internal/modules/auditlogs"
 	userroles "hubku/lapor_warga_be_v2/internal/modules/user_roles"
 	"hubku/lapor_warga_be_v2/pkg"
 	"log"
@@ -18,26 +19,33 @@ type UserService interface {
 	UpdateUserLastLogin(id uuid.UUID) error
 	IncrementFailedLogins(id uuid.UUID) error
 	CheckUserExists(email, username string) (bool, error)
-	CreateUser(params CreateUserRequest) (uuid.UUID, error)
+	CreateUser(currentUserID uuid.UUID, params CreateUserRequest) (uuid.UUID, error)
 	UpdateUser(targetID uuid.UUID, updatedBy uuid.UUID, req UpdateUserRequest) error
 	DeleteUser(id uuid.UUID, deletedBy uuid.UUID) error
-	RestoreUser(id uuid.UUID) error
+	RestoreUser(id uuid.UUID, restoredBy uuid.UUID) error
 	SearchUser(query string, page, limit int32) ([]UserProfileResponse, error)
 	GetUserByIdentifier(identifier string) (db.GetUserByIdentifierRow, error)
 	GetUserByID(id uuid.UUID) (UserProfileResponse, error)
 }
 
 type service struct {
-	enckey  []byte
-	repo    UserRepository
-	roleSvc userroles.UserRolesService
+	enckey     []byte
+	repo       UserRepository
+	roleSvc    userroles.UserRolesService
+	logService auditlogs.LogsService
 }
 
-func NewUserService(repo UserRepository, roleSvc userroles.UserRolesService, encKey string) UserService {
+func NewUserService(
+	repo UserRepository,
+	roleSvc userroles.UserRolesService,
+	logService auditlogs.LogsService,
+	encKey string,
+) UserService {
 	return &service{
-		repo:    repo,
-		roleSvc: roleSvc,
-		enckey:  []byte(encKey),
+		repo:       repo,
+		roleSvc:    roleSvc,
+		enckey:     []byte(encKey),
+		logService: logService,
 	}
 }
 
@@ -83,7 +91,7 @@ func (s *service) InitializeRootUser() error {
 		return errors.New("ROOT_USERNAME, ROOT_PASSWORD, ROOT_EMAIL, ROOT_FULLNAME, ROOT_PHONE_NUMBER are required")
 	}
 
-	_, err = s.CreateUser(CreateUserRequest{
+	_, err = s.CreateUser(uuid.Nil, CreateUserRequest{
 		Username:     username,
 		PasswordHash: passwordHash,
 		Email:        email,
@@ -149,7 +157,7 @@ func (s *service) CheckUserExists(email, username string) (bool, error) {
 	})
 }
 
-func (s *service) CreateUser(params CreateUserRequest) (uuid.UUID, error) {
+func (s *service) CreateUser(currentUserID uuid.UUID, params CreateUserRequest) (uuid.UUID, error) {
 	exists, err := s.CheckUserExists(params.Email, params.Username)
 	if err != nil {
 		return uuid.UUID{}, err
@@ -187,7 +195,7 @@ func (s *service) CreateUser(params CreateUserRequest) (uuid.UUID, error) {
 
 	if roleExist.ID == uuid.Nil {
 		// if role does not exist, create it first
-		createdID, err := s.roleSvc.CreateRole(db.CreateRoleParams{
+		createdID, err := s.roleSvc.CreateRole(currentUserID, db.CreateRoleParams{
 			Name:        string(pkg.RoleAdmin),
 			Description: "Default admin role",
 		})
@@ -214,6 +222,15 @@ func (s *service) CreateUser(params CreateUserRequest) (uuid.UUID, error) {
 	if err != nil && !strings.Contains(err.Error(), "no rows in result set") {
 		return uuid.UUID{}, err
 	}
+
+	go func() {
+		s.logService.CreateLog(db.CreateAuditLogParams{
+			EntityName:  string(pkg.LogEntityUsers),
+			Action:      string(pkg.LogTypeCreate),
+			EntityID:    userID,
+			PerformedBy: currentUserID,
+		})
+	}()
 
 	return userID, nil
 }
@@ -253,7 +270,7 @@ func (s *service) UpdateUser(targetID uuid.UUID, updatedBy uuid.UUID, req Update
 		return err
 	}
 
-	return s.repo.UpdateUser(db.UpdateUserParams{
+	if err := s.repo.UpdateUser(db.UpdateUserParams{
 		Username:     req.Username,
 		EmailHash:    emailHash,
 		EmailEnc:     emailEnc,
@@ -264,18 +281,57 @@ func (s *service) UpdateUser(targetID uuid.UUID, updatedBy uuid.UUID, req Update
 		Status:       string(req.Status),
 		ID:           targetID,
 		UpdatedBy:    updatedBy,
-	})
+	}); err != nil {
+		return err
+	}
+
+	go func() {
+		s.logService.CreateLog(db.CreateAuditLogParams{
+			EntityName:  string(pkg.LogEntityUsers),
+			Action:      string(pkg.LogTypeUpdate),
+			EntityID:    targetID,
+			PerformedBy: updatedBy,
+		})
+	}()
+
+	return nil
 }
 
 func (s *service) DeleteUser(id uuid.UUID, deletedBy uuid.UUID) error {
-	return s.repo.DeleteUser(db.DeleteUserParams{
+	if err := s.repo.DeleteUser(db.DeleteUserParams{
 		ID:        id,
 		DeletedBy: deletedBy,
-	})
+	}); err != nil {
+		return err
+	}
+
+	go func() {
+		s.logService.CreateLog(db.CreateAuditLogParams{
+			EntityName:  string(pkg.LogEntityUsers),
+			Action:      string(pkg.LogTypeDelete),
+			EntityID:    id,
+			PerformedBy: deletedBy,
+		})
+	}()
+
+	return nil
 }
 
-func (s *service) RestoreUser(id uuid.UUID) error {
-	return s.repo.RestoreUser(id)
+func (s *service) RestoreUser(id uuid.UUID, restoredBy uuid.UUID) error {
+	if err := s.repo.RestoreUser(id); err != nil {
+		return err
+	}
+
+	go func() {
+		s.logService.CreateLog(db.CreateAuditLogParams{
+			EntityName:  string(pkg.LogEntityUsers),
+			Action:      string(pkg.LogTypeRestore),
+			EntityID:    id,
+			PerformedBy: restoredBy,
+		})
+	}()
+
+	return nil
 }
 
 func (s *service) SearchUser(query string, page, limit int32) ([]UserProfileResponse, error) {

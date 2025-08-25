@@ -5,6 +5,8 @@ import (
 
 	"github.com/go-playground/validator/v10"
 	"github.com/gofiber/fiber/v2"
+	"github.com/google/uuid"
+	"github.com/spf13/cast"
 
 	"hubku/lapor_warga_be_v2/internal/modules/auth"
 	"hubku/lapor_warga_be_v2/pkg"
@@ -24,6 +26,19 @@ func NewAuthController(s auth.AuthService, v *validator.Validate) *AuthControlle
 
 func (c *AuthController) Register(ctx *fiber.Ctx) error {
 	startTime := time.Now()
+
+	currentUserID := ctx.Locals("user_id")
+	currentUserUUID, err := uuid.Parse(cast.ToString(currentUserID))
+	if err != nil {
+		return ctx.Status(fiber.StatusUnauthorized).JSON(
+			fiber.Map{
+				"error": "unauthenticated",
+				"meta": fiber.Map{
+					"duration": time.Since(startTime).String(),
+				},
+			},
+		)
+	}
 
 	var req auth.RegisterRequest
 	if err := ctx.BodyParser(&req); err != nil {
@@ -48,7 +63,7 @@ func (c *AuthController) Register(ctx *fiber.Ctx) error {
 		)
 	}
 
-	createdID, err := c.authService.Register(req)
+	createdID, err := c.authService.Register(currentUserUUID, req)
 	if err != nil {
 		return ctx.Status(fiber.StatusInternalServerError).JSON(
 			fiber.Map{

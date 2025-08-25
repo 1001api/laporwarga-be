@@ -369,7 +369,8 @@ func (c *UserController) RestoreUser(ctx *fiber.Ctx) error {
 	startTime := time.Now()
 
 	currentUser := ctx.Locals("user_id")
-	if _, err := uuid.Parse(cast.ToString(currentUser)); err != nil {
+	currentUserUUID, err := uuid.Parse(cast.ToString(currentUser))
+	if err != nil {
 		return ctx.Status(fiber.StatusUnauthorized).JSON(
 			fiber.Map{
 				"error": "unauthenticated",
@@ -392,7 +393,7 @@ func (c *UserController) RestoreUser(ctx *fiber.Ctx) error {
 		)
 	}
 
-	if err := c.userSvc.RestoreUser(uid); err != nil {
+	if err := c.userSvc.RestoreUser(uid, currentUserUUID); err != nil {
 		return ctx.Status(fiber.StatusInternalServerError).JSON(
 			fiber.Map{
 				"error": err.Error(),

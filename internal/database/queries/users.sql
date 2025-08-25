@@ -124,12 +124,6 @@ SET
         THEN @status::text
         ELSE status
     END,
-    role_id = CASE
-        WHEN @role_id::uuid IS NOT NULL
-            AND @role_id::uuid != role_id
-        THEN @role_id::uuid
-        ELSE role_id
-    END,
     credibility_score = CASE
         WHEN @credibility_score::smallint IS NOT NULL
             AND @credibility_score::smallint != credibility_score
@@ -146,7 +140,6 @@ SET
             OR (@phone_hash::text IS NOT NULL AND @phone_hash::text != '' AND @phone_hash::text != phone_hash)
             OR (@phone_enc::bytea IS NOT NULL AND @phone_enc::bytea != phone_enc)
             OR (@status::text IS NOT NULL AND @status::text != '' AND @status::text != status)
-            OR (@role_id::uuid IS NOT NULL AND @role_id::uuid != role_id)
             OR (@credibility_score::smallint IS NOT NULL AND @credibility_score::smallint != credibility_score)
         ) THEN CURRENT_TIMESTAMP
         ELSE last_updated_at

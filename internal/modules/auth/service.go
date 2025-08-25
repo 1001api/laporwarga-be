@@ -4,9 +4,9 @@ import (
 	"errors"
 	"fmt"
 	db "hubku/lapor_warga_be_v2/internal/database/generated"
+	"hubku/lapor_warga_be_v2/internal/modules/auditlogs"
 	"hubku/lapor_warga_be_v2/internal/modules/users"
 	"hubku/lapor_warga_be_v2/pkg"
-	"log"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -19,25 +19,27 @@ type AuthService interface {
 	Login(req LoginRequest) (*LoginResponse, error)
 	ValidateToken(tokenString string) (*Claims, error)
 	GenerateToken(user db.GetUserByIdentifierRow) (string, error)
-	Register(req RegisterRequest) (uuid.UUID, error)
+	Register(currentUserID uuid.UUID, req RegisterRequest) (uuid.UUID, error)
 	GenerateRefreshToken(user db.GetUserByIdentifierRow) (string, error)
 	RefreshToken(req RefreshRequest) (*LoginResponse, error)
 }
 
 type service struct {
 	userService   users.UserService
+	logService    auditlogs.LogsService
 	jwtSecret     []byte
 	tokenExpiry   time.Duration
 	refreshExpiry time.Duration
 	enckey        []byte
 }
 
-func NewAuthService(userService users.UserService, encKey string) AuthService {
+func NewAuthService(userService users.UserService, logService auditlogs.LogsService, encKey string) AuthService {
 	viper.SetDefault("JWT_EXPIRY", 15)
 	viper.SetDefault("JWT_REFRESH_EXPIRY", 720)
 
 	return &service{
 		userService:   userService,
+		logService:    logService,
 		jwtSecret:     []byte(viper.GetString("JWT_SECRET")),
 		tokenExpiry:   time.Duration(viper.GetInt("JWT_EXPIRY")) * time.Minute,
 		refreshExpiry: time.Duration(viper.GetInt("JWT_REFRESH_EXPIRY")) * time.Minute,
@@ -61,7 +63,6 @@ func (s *service) Login(req LoginRequest) (*LoginResponse, error) {
 
 	if err := pkg.VerifyPassword(user.PasswordHash.String, req.Password); err != nil {
 		s.userService.IncrementFailedLogins(user.ID)
-		log.Println(err)
 		return nil, errors.New("invalid credentials")
 	}
 
@@ -74,9 +75,17 @@ func (s *service) Login(req LoginRequest) (*LoginResponse, error) {
 		return nil, fmt.Errorf("failed to generate refresh token: %w", err)
 	}
 
-	// update last login in background
 	go func(userID uuid.UUID) {
+		// update last login in background
 		s.userService.UpdateUserLastLogin(userID)
+
+		// create log in background
+		s.logService.CreateLog(db.CreateAuditLogParams{
+			EntityName:  string(pkg.LogEntityUsers),
+			Action:      string(pkg.LogTypeLogin),
+			EntityID:    user.ID,
+			PerformedBy: user.ID,
+		})
 	}(user.ID)
 
 	return &LoginResponse{
@@ -85,13 +94,13 @@ func (s *service) Login(req LoginRequest) (*LoginResponse, error) {
 	}, nil
 }
 
-func (s *service) Register(req RegisterRequest) (uuid.UUID, error) {
+func (s *service) Register(currentUserID uuid.UUID, req RegisterRequest) (uuid.UUID, error) {
 	hashed, err := pkg.HashPassword(req.Password)
 	if err != nil {
 		return uuid.UUID{}, err
 	}
 
-	createdID, err := s.userService.CreateUser(users.CreateUserRequest{
+	createdID, err := s.userService.CreateUser(currentUserID, users.CreateUserRequest{
 		Username:     req.Username,
 		Email:        req.Email,
 		FullName:     req.Fullname,
