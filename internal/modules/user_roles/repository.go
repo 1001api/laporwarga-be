@@ -19,6 +19,7 @@ type UserRolesRepository interface {
 	HasRole(arg db.HasRoleParams) (bool, error)
 	ListAllRoles() ([]db.Role, error)
 	UpdateRole(arg db.UpdateRoleParams) error
+	RemoveRole(id uuid.UUID) error
 }
 
 type repository struct {
@@ -65,4 +66,8 @@ func (r *repository) ListAllRoles() ([]db.Role, error) {
 
 func (r *repository) UpdateRole(arg db.UpdateRoleParams) error {
 	return r.queries.UpdateRole(context.Background(), arg)
+}
+
+func (r *repository) RemoveRole(id uuid.UUID) error {
+	return r.queries.DeleteRole(context.Background(), id)
 }

@@ -85,9 +85,7 @@ SELECT EXISTS (
 ) AS exists;
 
 -- name: DeleteRole :exec
-UPDATE roles
-SET 
-    deleted_at = CURRENT_TIMESTAMP
+DELETE FROM roles
 WHERE id = @id::uuid;
 
 -- name: UpdateRole :exec

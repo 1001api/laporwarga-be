@@ -27,10 +27,9 @@ func Routing(r fiber.Router, db *pgxpool.Pool) {
 	userRepo := users.NewUserRepository(db)
 	roleRepo := userroles.NewUserRolesRepository(db)
 
-	userService := users.NewUserService(userRepo, roleRepo, encKey)
-	authService := auth.NewAuthService(userService, encKey)
-
 	userRolesService := userroles.NewUserRolesService(roleRepo)
+	userService := users.NewUserService(userRepo, userRolesService, encKey)
+	authService := auth.NewAuthService(userService, encKey)
 
 	userController := controllers.NewUserController(userService, validator)
 	authController := controllers.NewAuthController(authService, validator)
@@ -67,6 +66,11 @@ func Routing(r fiber.Router, db *pgxpool.Pool) {
 	{
 		rolesRoutes.Get("/list", userRolesController.ListAllRoles)
 		rolesRoutes.Post("/create", userRolesController.CreateRole)
+		rolesRoutes.Post("/assign/:id", userRolesController.AssignRole)
+		rolesRoutes.Get("/id/:id", userRolesController.GetRoleByID)
+		rolesRoutes.Get("/name/:name", userRolesController.GetRoleByName)
+		rolesRoutes.Put("/:id", userRolesController.UpdateRole)
+		rolesRoutes.Delete("/:id", userRolesController.RemoveRole)
 	}
 }
 

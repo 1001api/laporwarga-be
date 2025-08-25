@@ -79,9 +79,7 @@ func (q *Queries) CreateRole(ctx context.Context, arg CreateRoleParams) (uuid.UU
 }
 
 const deleteRole = `-- name: DeleteRole :exec
-UPDATE roles
-SET 
-    deleted_at = CURRENT_TIMESTAMP
+DELETE FROM roles
 WHERE id = $1::uuid
 `
 
