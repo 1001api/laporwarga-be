@@ -9,10 +9,12 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
+	"github.com/gofiber/fiber/v2/middleware/earlydata"
 	"github.com/gofiber/fiber/v2/middleware/encryptcookie"
 	"github.com/gofiber/fiber/v2/middleware/limiter"
 	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/gofiber/fiber/v2/middleware/monitor"
+	"github.com/gofiber/fiber/v2/middleware/recover"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/spf13/viper"
 )
@@ -35,6 +37,13 @@ func main() {
 	db = database.ConnectPG()
 
 	r := fiber.New()
+
+	// Recover middleware
+	r.Use(recover.New())
+
+	// Early Data supporting TLS 1.3 0-RTT
+	// by default it will only allow early data for GET, HEAD, OPTIONS and TRACE requests (safe method)
+	r.Use(earlydata.New())
 
 	// Global Limit
 	r.Use(limiter.New(limiter.Config{

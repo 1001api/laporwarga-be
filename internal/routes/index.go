@@ -55,7 +55,7 @@ func Routing(r fiber.Router, db *pgxpool.Pool) {
 	{
 		auth.Post("/login", authController.Login)
 		auth.Post("/refresh", authController.Refresh)
-		auth.Post("/session", JWTMiddleware(authService), authController.GetSession)
+		auth.Get("/session", JWTMiddleware(authService), authController.GetSession)
 	}
 
 	userRoutes := versioning.Group("/users", JWTMiddleware(authService))
