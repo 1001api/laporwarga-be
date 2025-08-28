@@ -5,10 +5,12 @@ import (
 	"hubku/lapor_warga_be_v2/internal/routes"
 	"log"
 	"runtime"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/gofiber/fiber/v2/middleware/encryptcookie"
+	"github.com/gofiber/fiber/v2/middleware/limiter"
 	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/gofiber/fiber/v2/middleware/monitor"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -33,6 +35,20 @@ func main() {
 	db = database.ConnectPG()
 
 	r := fiber.New()
+
+	// Global Limit
+	r.Use(limiter.New(limiter.Config{
+		Max:        60,               // 60 requests
+		Expiration: 60 * time.Second, // 1 minute
+		KeyGenerator: func(c *fiber.Ctx) string {
+			ip := c.IP()
+			if fwd := c.Get("X-Forwarded-For"); fwd != "" {
+				ip = fwd
+			}
+			return ip
+		},
+		LimiterMiddleware: limiter.SlidingWindow{},
+	}))
 
 	// Request Logging
 	r.Use(logger.New(logger.Config{
