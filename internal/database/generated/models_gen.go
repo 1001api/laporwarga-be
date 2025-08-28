@@ -9,6 +9,21 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type Area struct {
+	ID          uuid.UUID          `db:"id" json:"id"`
+	Name        string             `db:"name" json:"name"`
+	Description pgtype.Text        `db:"description" json:"description"`
+	AreaType    string             `db:"area_type" json:"area_type"`
+	AreaCode    string             `db:"area_code" json:"area_code"`
+	IsActive    pgtype.Bool        `db:"is_active" json:"is_active"`
+	ParentID    pgtype.UUID        `db:"parent_id" json:"parent_id"`
+	Boundary    interface{}        `db:"boundary" json:"boundary"`
+	CenterPoint interface{}        `db:"center_point" json:"center_point"`
+	CreatedAt   pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt   pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+	DeletedAt   pgtype.Timestamptz `db:"deleted_at" json:"deleted_at"`
+}
+
 type AuditLog struct {
 	ID          uuid.UUID          `db:"id" json:"id"`
 	EntityName  string             `db:"entity_name" json:"entity_name"`

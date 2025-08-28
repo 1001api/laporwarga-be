@@ -7,6 +7,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 	"github.com/spf13/cast"
+	"github.com/spf13/viper"
 
 	"hubku/lapor_warga_be_v2/internal/modules/auth"
 	"hubku/lapor_warga_be_v2/pkg"
@@ -86,6 +87,168 @@ func (c *AuthController) Register(ctx *fiber.Ctx) error {
 func (c *AuthController) Refresh(ctx *fiber.Ctx) error {
 	startTime := time.Now()
 
+	refreshToken := ctx.Cookies(pkg.RefreshTokenName)
+
+	if refreshToken == "" {
+		return ctx.Status(fiber.StatusUnauthorized).JSON(
+			fiber.Map{
+				"error": "refresh_token is required",
+				"meta": fiber.Map{
+					"duration": time.Since(startTime).String(),
+				},
+			},
+		)
+	}
+
+	resp, err := c.authService.RefreshToken(auth.RefreshRequest{
+		RefreshToken: refreshToken,
+	})
+	if err != nil {
+		return ctx.Status(fiber.StatusUnauthorized).JSON(
+			fiber.Map{
+				"error": err.Error(),
+				"meta": fiber.Map{
+					"duration": time.Since(startTime).String(),
+				},
+			},
+		)
+	}
+
+	ctx.Cookie(&fiber.Cookie{
+		Name:     pkg.AccessTokenName,
+		Value:    resp.Token,
+		Path:     "/",
+		Domain:   viper.GetString("APP_DOMAIN"),
+		HTTPOnly: true,
+		Secure:   viper.GetBool("ENV_PROD"),
+		SameSite: fiber.CookieSameSiteLaxMode,
+		MaxAge:   60 * viper.GetInt("JWT_EXPIRY"), // 15 minutes default
+	})
+
+	ctx.Cookie(&fiber.Cookie{
+		Name:     pkg.RefreshTokenName,
+		Value:    resp.RefreshToken,
+		Path:     "/",
+		Domain:   viper.GetString("APP_DOMAIN"),
+		HTTPOnly: true,
+		Secure:   viper.GetBool("ENV_PROD"),
+		SameSite: fiber.CookieSameSiteLaxMode,
+		MaxAge:   60 * viper.GetInt("JWT_REFRESH_EXPIRY"), // 3 days default
+	})
+
+	return ctx.JSON(
+		fiber.Map{
+			"data": "success",
+			"meta": fiber.Map{
+				"duration": time.Since(startTime).String(),
+			},
+		},
+	)
+}
+
+func (c *AuthController) Login(ctx *fiber.Ctx) error {
+	startTime := time.Now()
+
+	var req auth.LoginRequest
+
+	if err := ctx.BodyParser(&req); err != nil {
+		return ctx.Status(fiber.StatusBadRequest).JSON(
+			fiber.Map{
+				"error": "invalid json body",
+				"meta": fiber.Map{
+					"duration": time.Since(startTime).String(),
+				},
+			},
+		)
+	}
+
+	resp, err := c.authService.Login(req, false)
+
+	if err != nil {
+		return ctx.Status(fiber.StatusUnauthorized).JSON(
+			fiber.Map{
+				"error": err.Error(),
+				"meta": fiber.Map{
+					"duration": time.Since(startTime).String(),
+				},
+			},
+		)
+	}
+
+	ctx.Cookie(&fiber.Cookie{
+		Name:     pkg.AccessTokenName,
+		Value:    resp.Token,
+		Path:     "/",
+		Domain:   viper.GetString("APP_DOMAIN"),
+		HTTPOnly: true,
+		Secure:   viper.GetBool("ENV_PROD"),
+		SameSite: fiber.CookieSameSiteLaxMode,
+		MaxAge:   60 * viper.GetInt("JWT_EXPIRY"), // 15 minutes
+	})
+
+	ctx.Cookie(&fiber.Cookie{
+		Name:     pkg.RefreshTokenName,
+		Value:    resp.RefreshToken,
+		Path:     "/",
+		Domain:   viper.GetString("APP_DOMAIN"),
+		HTTPOnly: true,
+		Secure:   viper.GetBool("ENV_PROD"),
+		SameSite: fiber.CookieSameSiteLaxMode,
+		MaxAge:   60 * viper.GetInt("JWT_REFRESH_EXPIRY"), // 3 days
+	})
+
+	return ctx.JSON(
+		fiber.Map{
+			"data": "success",
+			"meta": fiber.Map{
+				"duration": time.Since(startTime).String(),
+			},
+		},
+	)
+}
+
+func (c *AuthController) LoginMobile(ctx *fiber.Ctx) error {
+	startTime := time.Now()
+
+	var req auth.LoginRequest
+
+	if err := ctx.BodyParser(&req); err != nil {
+		return ctx.Status(fiber.StatusBadRequest).JSON(
+			fiber.Map{
+				"error": "invalid json body",
+				"meta": fiber.Map{
+					"duration": time.Since(startTime).String(),
+				},
+			},
+		)
+	}
+
+	resp, err := c.authService.Login(req, true)
+
+	if err != nil {
+		return ctx.Status(fiber.StatusUnauthorized).JSON(
+			fiber.Map{
+				"error": err.Error(),
+				"meta": fiber.Map{
+					"duration": time.Since(startTime).String(),
+				},
+			},
+		)
+	}
+
+	return ctx.JSON(
+		fiber.Map{
+			"data": resp,
+			"meta": fiber.Map{
+				"duration": time.Since(startTime).String(),
+			},
+		},
+	)
+}
+
+func (c *AuthController) RefreshMobile(ctx *fiber.Ctx) error {
+	startTime := time.Now()
+
 	var req auth.RefreshRequest
 
 	if err := ctx.BodyParser(&req); err != nil {
@@ -132,77 +295,20 @@ func (c *AuthController) Refresh(ctx *fiber.Ctx) error {
 	)
 }
 
-func (c *AuthController) Login(ctx *fiber.Ctx) error {
+func (c *AuthController) GetSession(ctx *fiber.Ctx) error {
 	startTime := time.Now()
 
-	var req auth.LoginRequest
-
-	if err := ctx.BodyParser(&req); err != nil {
-		return ctx.Status(fiber.StatusBadRequest).JSON(
-			fiber.Map{
-				"error": "invalid json body",
-				"meta": fiber.Map{
-					"duration": time.Since(startTime).String(),
-				},
-			},
-		)
-	}
-
-	resp, err := c.authService.Login(req, false)
-
-	if err != nil {
-		return ctx.Status(fiber.StatusUnauthorized).JSON(
-			fiber.Map{
-				"error": err.Error(),
-				"meta": fiber.Map{
-					"duration": time.Since(startTime).String(),
-				},
-			},
-		)
-	}
+	userID := cast.ToString(ctx.Locals("user_id"))
+	role := cast.ToString(ctx.Locals("role"))
+	username := cast.ToString(ctx.Locals("username"))
 
 	return ctx.JSON(
 		fiber.Map{
-			"data": resp,
-			"meta": fiber.Map{
-				"duration": time.Since(startTime).String(),
+			"data": fiber.Map{
+				"id":       userID,
+				"role":     role,
+				"username": username,
 			},
-		},
-	)
-}
-
-func (c *AuthController) LoginMobile(ctx *fiber.Ctx) error {
-	startTime := time.Now()
-
-	var req auth.LoginRequest
-
-	if err := ctx.BodyParser(&req); err != nil {
-		return ctx.Status(fiber.StatusBadRequest).JSON(
-			fiber.Map{
-				"error": "invalid json body",
-				"meta": fiber.Map{
-					"duration": time.Since(startTime).String(),
-				},
-			},
-		)
-	}
-
-	resp, err := c.authService.Login(req, true)
-
-	if err != nil {
-		return ctx.Status(fiber.StatusUnauthorized).JSON(
-			fiber.Map{
-				"error": err.Error(),
-				"meta": fiber.Map{
-					"duration": time.Since(startTime).String(),
-				},
-			},
-		)
-	}
-
-	return ctx.JSON(
-		fiber.Map{
-			"data": resp,
 			"meta": fiber.Map{
 				"duration": time.Since(startTime).String(),
 			},

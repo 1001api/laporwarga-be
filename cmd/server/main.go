@@ -8,6 +8,8 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
+	"github.com/gofiber/fiber/v2/middleware/encryptcookie"
+	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/gofiber/fiber/v2/middleware/monitor"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/spf13/viper"
@@ -32,8 +34,23 @@ func main() {
 
 	r := fiber.New()
 
+	// Request Logging
+	r.Use(logger.New(logger.Config{
+		Format: "${time} ${ip} ${method} ${path} ${status} ${latency}\n",
+	}))
+
 	// CORS
-	r.Use(cors.New())
+	r.Use(cors.New(cors.Config{
+		AllowOrigins:     viper.GetString("CLIENT_DOMAIN"),
+		AllowMethods:     "GET, POST, PUT, PATCH, DELETE, OPTIONS",
+		AllowHeaders:     "Origin, Content-Type, Accept, Authorization",
+		AllowCredentials: true,
+	}))
+
+	// Encrypt Cookie
+	r.Use(encryptcookie.New(encryptcookie.Config{
+		Key: viper.GetString("COOKIE_ENC_KEY"),
+	}))
 
 	// ROUTING
 	routes.Routing(r, db)

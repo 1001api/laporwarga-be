@@ -14,6 +14,7 @@ type Querier interface {
 	AssignRoleToUser(ctx context.Context, arg AssignRoleToUserParams) error
 	CheckRoleExists(ctx context.Context, name string) (bool, error)
 	CheckUserExists(ctx context.Context, arg CheckUserExistsParams) (bool, error)
+	CreateArea(ctx context.Context, arg CreateAreaParams) (uuid.UUID, error)
 	CreateAuditLog(ctx context.Context, arg CreateAuditLogParams) error
 	CreateRole(ctx context.Context, arg CreateRoleParams) (uuid.UUID, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (uuid.UUID, error)
