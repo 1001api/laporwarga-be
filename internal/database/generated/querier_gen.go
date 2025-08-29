@@ -12,6 +12,7 @@ import (
 
 type Querier interface {
 	AssignRoleToUser(ctx context.Context, arg AssignRoleToUserParams) error
+	CheckAreaExist(ctx context.Context, arg CheckAreaExistParams) (uuid.UUID, error)
 	CheckRoleExists(ctx context.Context, name string) (bool, error)
 	CheckUserExists(ctx context.Context, arg CheckUserExistsParams) (bool, error)
 	CreateArea(ctx context.Context, arg CreateAreaParams) (uuid.UUID, error)

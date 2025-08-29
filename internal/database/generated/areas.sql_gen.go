@@ -12,6 +12,22 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const checkAreaExist = `-- name: CheckAreaExist :one
+SELECT id FROM areas WHERE name = $1 OR area_code = $2
+`
+
+type CheckAreaExistParams struct {
+	Name     string `db:"name" json:"name"`
+	AreaCode string `db:"area_code" json:"area_code"`
+}
+
+func (q *Queries) CheckAreaExist(ctx context.Context, arg CheckAreaExistParams) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, checkAreaExist, arg.Name, arg.AreaCode)
+	var id uuid.UUID
+	err := row.Scan(&id)
+	return id, err
+}
+
 const createArea = `-- name: CreateArea :one
 INSERT INTO areas (
     name,
@@ -24,7 +40,17 @@ INSERT INTO areas (
     $2,
     $3,
     $4,
-    ST_SetSRID(ST_GeomFromGeoJSON($5), 4326)
+    ST_SetSRID(
+        ST_Multi(
+            ST_CollectionExtract(
+                ST_MakeValid(
+                    ST_GeomFromGeoJSON($5::text)
+                ),
+                3 -- Extract only polygon/multipolygon
+            )
+        ), 
+        4326
+    )
 ) RETURNING id
 `
 
@@ -33,7 +59,7 @@ type CreateAreaParams struct {
 	Description pgtype.Text `db:"description" json:"description"`
 	AreaType    string      `db:"area_type" json:"area_type"`
 	AreaCode    string      `db:"area_code" json:"area_code"`
-	Boundary    interface{} `db:"boundary" json:"boundary"`
+	Boundary    string      `db:"boundary" json:"boundary"`
 }
 
 func (q *Queries) CreateArea(ctx context.Context, arg CreateAreaParams) (uuid.UUID, error) {

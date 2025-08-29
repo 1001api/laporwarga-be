@@ -12,9 +12,9 @@ import (
 type Area struct {
 	ID          uuid.UUID          `db:"id" json:"id"`
 	Name        string             `db:"name" json:"name"`
-	Description pgtype.Text        `db:"description" json:"description"`
 	AreaType    string             `db:"area_type" json:"area_type"`
 	AreaCode    string             `db:"area_code" json:"area_code"`
+	Description pgtype.Text        `db:"description" json:"description"`
 	IsActive    pgtype.Bool        `db:"is_active" json:"is_active"`
 	ParentID    pgtype.UUID        `db:"parent_id" json:"parent_id"`
 	Boundary    interface{}        `db:"boundary" json:"boundary"`

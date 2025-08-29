@@ -10,6 +10,7 @@ import (
 
 type AreaRepository interface {
 	CreateArea(arg db.CreateAreaParams) (uuid.UUID, error)
+	CheckAreaExist(arg db.CheckAreaExistParams) (uuid.UUID, error)
 }
 
 type repository struct {
@@ -22,4 +23,8 @@ func NewAreaRepository(pool *pgxpool.Pool) AreaRepository {
 
 func (r *repository) CreateArea(arg db.CreateAreaParams) (uuid.UUID, error) {
 	return r.db.CreateArea(context.Background(), arg)
+}
+
+func (r *repository) CheckAreaExist(arg db.CheckAreaExistParams) (uuid.UUID, error) {
+	return r.db.CheckAreaExist(context.Background(), arg)
 }

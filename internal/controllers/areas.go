@@ -3,6 +3,7 @@ package controllers
 import (
 	"hubku/lapor_warga_be_v2/internal/modules/areas"
 	"hubku/lapor_warga_be_v2/pkg"
+	"strings"
 	"time"
 
 	"github.com/go-playground/validator/v10"
@@ -47,6 +48,17 @@ func (c *AreasController) CreateArea(ctx *fiber.Ctx) error {
 
 	createdID, err := c.service.CreateArea(req)
 	if err != nil {
+		if strings.Contains(err.Error(), "area already exist") {
+			return ctx.Status(fiber.StatusConflict).JSON(
+				fiber.Map{
+					"error": err.Error(),
+					"meta": fiber.Map{
+						"duration": time.Since(startTime).String(),
+					},
+				},
+			)
+		}
+
 		return ctx.Status(fiber.StatusInternalServerError).JSON(
 			fiber.Map{
 				"error": err.Error(),
