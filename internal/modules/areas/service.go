@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	db "hubku/lapor_warga_be_v2/internal/database/generated"
+	"hubku/lapor_warga_be_v2/internal/modules/auditlogs"
+	"hubku/lapor_warga_be_v2/pkg"
 	"strings"
 
 	"github.com/google/uuid"
@@ -14,18 +16,22 @@ import (
 )
 
 type AreaService interface {
-	CreateArea(arg CreateAreaRequest) (uuid.UUID, error)
+	CreateArea(currentUserID uuid.UUID, arg CreateAreaRequest) (uuid.UUID, error)
+	GetAreas(page, limit int, tolerance pkg.AreaTolerance) ([]db.GetAreasRow, error)
+	GetAreaBoundary(id uuid.UUID) (db.GetAreaBoundaryRow, error)
+	ToggleAreaActiveStatus(currentUserID uuid.UUID, id uuid.UUID) (db.ToggleAreaActiveStatusRow, error)
 }
 
 type service struct {
-	repo AreaRepository
+	logService auditlogs.LogsService
+	repo       AreaRepository
 }
 
-func NewAreaService(repo AreaRepository) AreaService {
-	return &service{repo: repo}
+func NewAreaService(logService auditlogs.LogsService, repo AreaRepository) AreaService {
+	return &service{logService: logService, repo: repo}
 }
 
-func (s *service) CreateArea(arg CreateAreaRequest) (uuid.UUID, error) {
+func (s *service) CreateArea(currentUserID uuid.UUID, arg CreateAreaRequest) (uuid.UUID, error) {
 	// Check if area already exist
 	id, err := s.repo.CheckAreaExist(db.CheckAreaExistParams{
 		Name:     arg.Name,
@@ -76,7 +82,7 @@ func (s *service) CreateArea(arg CreateAreaRequest) (uuid.UUID, error) {
 		return uuid.Nil, fmt.Errorf("failed to marshal geometry: %w", err)
 	}
 
-	return s.repo.CreateArea(db.CreateAreaParams{
+	result, err := s.repo.CreateArea(db.CreateAreaParams{
 		Name: arg.Name,
 		Description: pgtype.Text{
 			String: arg.Description,
@@ -86,6 +92,17 @@ func (s *service) CreateArea(arg CreateAreaRequest) (uuid.UUID, error) {
 		AreaCode: arg.AreaCode,
 		Boundary: string(geomBytes),
 	})
+
+	go func() {
+		s.logService.CreateLog(db.CreateAuditLogParams{
+			EntityName:  string(pkg.LogEntityAreas),
+			Action:      string(pkg.LogTypeCreate),
+			EntityID:    result,
+			PerformedBy: currentUserID,
+		})
+	}()
+
+	return result, err
 }
 
 // marshalGeometryToJSON converts orb.Geometry to 2D GeoJSON bytes efficiently
@@ -153,4 +170,61 @@ func validateGeometry(geom orb.Geometry) error {
 		return errors.New("unsupported geometry type")
 	}
 	return nil
+}
+
+func (s *service) GetAreas(page, limit int, tolerance pkg.AreaTolerance) ([]db.GetAreasRow, error) {
+	if page <= 0 {
+		page = 1
+	}
+
+	if limit <= 0 {
+		limit = 20
+	}
+
+	var simplifyTolerance pkg.AreaToleranceValue
+
+	switch tolerance {
+	case pkg.AreaSimple:
+		simplifyTolerance = pkg.SimpleAreaTolerance
+	case pkg.AreaDetail:
+		simplifyTolerance = pkg.DetailAreaTolerance
+	case pkg.AreaOff:
+		simplifyTolerance = pkg.OffAreaTolerance
+	default:
+		return nil, errors.New("invalid tolerance")
+	}
+
+	return s.repo.GetAreas(db.GetAreasParams{
+		OffsetCount:       int32((page - 1) * limit),
+		LimitCount:        int32(limit),
+		SimplifyTolerance: float64(simplifyTolerance),
+	})
+}
+
+func (s *service) GetAreaBoundary(id uuid.UUID) (db.GetAreaBoundaryRow, error) {
+	return s.repo.GetAreaBoundary(id)
+}
+
+func (s *service) ToggleAreaActiveStatus(currentUserID uuid.UUID, id uuid.UUID) (db.ToggleAreaActiveStatusRow, error) {
+	res, err := s.repo.ToggleAreaActiveStatus(id)
+	if err != nil {
+		return res, err
+	}
+
+	go func() {
+		metadata, _ := json.Marshal(map[string]interface{}{
+			"id":        res.ID,
+			"is_active": res.IsActive.Bool,
+		})
+
+		s.logService.CreateLog(db.CreateAuditLogParams{
+			EntityName:  string(pkg.LogEntityAreas),
+			Action:      string(pkg.LogTypeUpdate),
+			Metadata:    json.RawMessage(metadata),
+			EntityID:    id,
+			PerformedBy: currentUserID,
+		})
+	}()
+
+	return res, nil
 }

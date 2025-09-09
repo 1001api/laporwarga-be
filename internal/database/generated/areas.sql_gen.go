@@ -7,6 +7,7 @@ package db
 
 import (
 	"context"
+	"encoding/json"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -73,4 +74,115 @@ func (q *Queries) CreateArea(ctx context.Context, arg CreateAreaParams) (uuid.UU
 	var id uuid.UUID
 	err := row.Scan(&id)
 	return id, err
+}
+
+const getAreaBoundary = `-- name: GetAreaBoundary :one
+SELECT
+    id,
+    ST_AsGeoJSON(boundary)::jsonb AS boundary,
+    ST_AsGeoJSON(center_point)::jsonb AS center_point
+FROM areas
+WHERE id = $1
+`
+
+type GetAreaBoundaryRow struct {
+	ID          uuid.UUID       `db:"id" json:"id"`
+	Boundary    json.RawMessage `db:"boundary" json:"boundary"`
+	CenterPoint json.RawMessage `db:"center_point" json:"center_point"`
+}
+
+func (q *Queries) GetAreaBoundary(ctx context.Context, id uuid.UUID) (GetAreaBoundaryRow, error) {
+	row := q.db.QueryRow(ctx, getAreaBoundary, id)
+	var i GetAreaBoundaryRow
+	err := row.Scan(&i.ID, &i.Boundary, &i.CenterPoint)
+	return i, err
+}
+
+const getAreas = `-- name: GetAreas :many
+SELECT 
+    id,
+    name,
+    description,
+    area_type,
+    area_code,
+    CASE
+        WHEN $1 < 0 THEN NULL 
+        ELSE ST_AsGeoJSON(
+            ST_Simplify(boundary, $1::float)
+        )::jsonb
+    END AS boundary,
+    ST_AsGeoJSON(center_point)::jsonb AS center_point,
+    is_active,
+    created_at
+FROM
+    areas
+OFFSET $2 LIMIT $3
+`
+
+type GetAreasParams struct {
+	SimplifyTolerance interface{} `db:"simplify_tolerance" json:"simplify_tolerance"`
+	OffsetCount       int32       `db:"offset_count" json:"offset_count"`
+	LimitCount        int32       `db:"limit_count" json:"limit_count"`
+}
+
+type GetAreasRow struct {
+	ID          uuid.UUID          `db:"id" json:"id"`
+	Name        string             `db:"name" json:"name"`
+	Description pgtype.Text        `db:"description" json:"description"`
+	AreaType    string             `db:"area_type" json:"area_type"`
+	AreaCode    string             `db:"area_code" json:"area_code"`
+	Boundary    json.RawMessage    `db:"boundary" json:"boundary"`
+	CenterPoint json.RawMessage    `db:"center_point" json:"center_point"`
+	IsActive    pgtype.Bool        `db:"is_active" json:"is_active"`
+	CreatedAt   pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
+func (q *Queries) GetAreas(ctx context.Context, arg GetAreasParams) ([]GetAreasRow, error) {
+	rows, err := q.db.Query(ctx, getAreas, arg.SimplifyTolerance, arg.OffsetCount, arg.LimitCount)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetAreasRow{}
+	for rows.Next() {
+		var i GetAreasRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.Description,
+			&i.AreaType,
+			&i.AreaCode,
+			&i.Boundary,
+			&i.CenterPoint,
+			&i.IsActive,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const toggleAreaActiveStatus = `-- name: ToggleAreaActiveStatus :one
+UPDATE
+    areas
+SET
+    is_active = NOT is_active
+WHERE id = $1 RETURNING id, is_active
+`
+
+type ToggleAreaActiveStatusRow struct {
+	ID       uuid.UUID   `db:"id" json:"id"`
+	IsActive pgtype.Bool `db:"is_active" json:"is_active"`
+}
+
+func (q *Queries) ToggleAreaActiveStatus(ctx context.Context, id uuid.UUID) (ToggleAreaActiveStatusRow, error) {
+	row := q.db.QueryRow(ctx, toggleAreaActiveStatus, id)
+	var i ToggleAreaActiveStatusRow
+	err := row.Scan(&i.ID, &i.IsActive)
+	return i, err
 }

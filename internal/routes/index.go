@@ -35,7 +35,7 @@ func Routing(r fiber.Router, db *pgxpool.Pool) {
 	userRolesService := userroles.NewUserRolesService(roleRepo, logService)
 	userService := users.NewUserService(userRepo, userRolesService, logService, encKey)
 	authService := auth.NewAuthService(userService, logService, encKey)
-	areaService := areas.NewAreaService(areaRepo)
+	areaService := areas.NewAreaService(logService, areaRepo)
 
 	logsController := controllers.NewLogsController(logService)
 	userController := controllers.NewUserController(userService, validator)
@@ -90,6 +90,9 @@ func Routing(r fiber.Router, db *pgxpool.Pool) {
 	areasRoutes := versioning.Group("/areas", JWTMiddleware(authService), RoleMiddleware(string(pkg.RoleAdmin)))
 	{
 		areasRoutes.Post("/create", areaController.CreateArea)
+		areasRoutes.Get("/list", areaController.GetAreas)
+		areasRoutes.Get("/boundary/:id", areaController.GetAreaBoundary)
+		areasRoutes.Patch("/toggle-status/:id", areaController.ToggleAreaActiveStatus)
 	}
 
 	/**

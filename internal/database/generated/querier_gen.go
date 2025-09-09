@@ -21,6 +21,8 @@ type Querier interface {
 	CreateUser(ctx context.Context, arg CreateUserParams) (uuid.UUID, error)
 	DeleteRole(ctx context.Context, id uuid.UUID) error
 	DeleteUser(ctx context.Context, arg DeleteUserParams) error
+	GetAreaBoundary(ctx context.Context, id uuid.UUID) (GetAreaBoundaryRow, error)
+	GetAreas(ctx context.Context, arg GetAreasParams) ([]GetAreasRow, error)
 	GetAuditLogs(ctx context.Context) ([]AuditLog, error)
 	GetRoleByID(ctx context.Context, id uuid.UUID) (Role, error)
 	GetRoleByName(ctx context.Context, name string) (Role, error)
@@ -37,6 +39,7 @@ type Querier interface {
 	ResetFailedLoginCount(ctx context.Context, id uuid.UUID) error
 	RestoreUser(ctx context.Context, id uuid.UUID) error
 	SearchUser(ctx context.Context, arg SearchUserParams) ([]SearchUserRow, error)
+	ToggleAreaActiveStatus(ctx context.Context, id uuid.UUID) (ToggleAreaActiveStatusRow, error)
 	UpdateLastLogin(ctx context.Context, id uuid.UUID) error
 	UpdateRole(ctx context.Context, arg UpdateRoleParams) error
 	UpdateUser(ctx context.Context, arg UpdateUserParams) error
