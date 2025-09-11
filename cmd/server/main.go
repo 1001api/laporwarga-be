@@ -3,19 +3,24 @@ package main
 import (
 	"hubku/lapor_warga_be_v2/internal/database"
 	"hubku/lapor_warga_be_v2/internal/routes"
-	"log"
+	"os"
 	"runtime"
 	"time"
+	_ "time/tzdata"
 
+	adapter "github.com/axiomhq/axiom-go/adapters/zerolog"
+	"github.com/axiomhq/axiom-go/axiom"
+	"github.com/gofiber/contrib/fiberzerolog"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/gofiber/fiber/v2/middleware/earlydata"
 	"github.com/gofiber/fiber/v2/middleware/encryptcookie"
 	"github.com/gofiber/fiber/v2/middleware/limiter"
-	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/gofiber/fiber/v2/middleware/monitor"
 	"github.com/gofiber/fiber/v2/middleware/recover"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 	"github.com/spf13/viper"
 )
 
@@ -27,12 +32,52 @@ func init() {
 	viper.SetConfigFile(".env")
 	err := viper.ReadInConfig()
 	if err != nil {
-		log.Println("No .env file found, continuing with environment variables")
+		log.Fatal().Msg("No .env file found, continuing with environment variables")
 	}
 	viper.AutomaticEnv()
 }
 
 func main() {
+	// Setup Axiom
+	client, err := axiom.NewClient(
+		axiom.SetToken(viper.GetString("AXIOM_TOKEN")),
+	)
+	if err != nil {
+		log.Fatal().Err(err).Msg("Failed to create Axiom client")
+	}
+
+	axiomWriter, err := adapter.New(
+		adapter.SetClient(client),
+		adapter.SetDataset(viper.GetString("AXIOM_DATASET")),
+		adapter.SetLevels([]zerolog.Level{
+			zerolog.InfoLevel,
+			zerolog.WarnLevel,
+			zerolog.ErrorLevel,
+			zerolog.FatalLevel,
+			zerolog.PanicLevel,
+		}),
+	)
+	if err != nil {
+		log.Fatal().Err(err).Msg("Failed to create Axiom writer")
+	}
+
+	// Jakarta Timezone
+	jakarta, err := time.LoadLocation("Asia/Jakarta")
+	if err != nil {
+		log.Fatal().Err(err).Msg("Failed to load Jakarta location")
+	}
+
+	// Setup Zerolog
+	multiWriter := zerolog.MultiLevelWriter(
+		zerolog.ConsoleWriter{
+			Out:          os.Stdout,
+			TimeFormat:   time.RFC3339,
+			TimeLocation: jakarta,
+		},
+		axiomWriter,
+	)
+	log.Logger = zerolog.New(multiWriter).With().Timestamp().Logger()
+
 	// connect to database
 	db = database.ConnectPG()
 
@@ -60,8 +105,9 @@ func main() {
 	}))
 
 	// Request Logging
-	r.Use(logger.New(logger.Config{
-		Format: "${time} ${ip} ${method} ${path} ${status} ${latency}\n",
+	r.Use(fiberzerolog.New(fiberzerolog.Config{
+		Logger:          &log.Logger,
+		FieldsSnakeCase: true,
 	}))
 
 	// CORS
@@ -89,8 +135,10 @@ func main() {
 		port = "8181"
 	}
 
-	log.Println("Server Succesfully to Listed in Port:", port)
-	log.Println("Go version:", runtime.Version())
+	log.Info().Str("port", port).Msg("Server successfully started")
+	log.Info().Str("go_version", runtime.Version()).Msg("Go version")
 
-	log.Fatal(r.Listen(":" + port))
+	if err := r.Listen(":" + port); err != nil {
+		log.Fatal().Err(err).Msg("Failed to start server")
+	}
 }
