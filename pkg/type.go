@@ -6,6 +6,7 @@ type RoleType string
 type LogType string
 type AreaTolerance string
 type AreaToleranceValue float64
+type JWTTokenType string
 
 const (
 	RoleCitizen  RoleType = "citizen"
@@ -26,9 +27,12 @@ const (
 	LogEntityAreas LogType = "areas"
 
 	// JWT
-	AccessTokenName  = "__hk_asid"
-	RefreshTokenName = "__hk_rsid"
-	MobileKeyName    = "X-Request-Tag"
+	AccessTokenName               = "__hk_asid"
+	RefreshTokenName              = "__hk_rsid"
+	MobileKeyName                 = "X-Request-Tag"
+	RefreshToken     JWTTokenType = "refresh"
+	AccessToken      JWTTokenType = "access"
+	JWTIssuer                     = "lapor_warga"
 
 	// Area Tolerance
 	AreaOff             AreaTolerance      = "off"

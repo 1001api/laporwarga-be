@@ -1,6 +1,8 @@
 package auth
 
 import (
+	"hubku/lapor_warga_be_v2/pkg"
+
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 )
@@ -19,11 +21,11 @@ type RefreshRequest struct {
 }
 
 type Claims struct {
-	UserID    uuid.UUID `json:"user_id"`
-	Username  string    `json:"username"`
-	Email     string    `json:"email"`
-	Role      string    `json:"role"`
-	TokenType string    `json:"token_type"`
+	UserID    uuid.UUID        `json:"user_id"`
+	Username  string           `json:"username"`
+	Email     string           `json:"email"`
+	Role      string           `json:"role"`
+	TokenType pkg.JWTTokenType `json:"token_type"`
 	jwt.RegisteredClaims
 }
 

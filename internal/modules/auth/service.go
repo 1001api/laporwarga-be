@@ -135,12 +135,12 @@ func (s *service) GenerateToken(user db.GetUserByIdentifierRow) (string, error) 
 		Username:  user.Username,
 		Email:     string(user.Email),
 		Role:      user.RoleName.String,
-		TokenType: "access",
+		TokenType: pkg.AccessToken,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(expiresAt),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
 			NotBefore: jwt.NewNumericDate(time.Now()),
-			Issuer:    "lapor_warga",
+			Issuer:    pkg.JWTIssuer,
 			Subject:   user.ID.String(),
 		},
 	}
@@ -162,12 +162,12 @@ func (s *service) GenerateRefreshToken(user db.GetUserByIdentifierRow) (string, 
 		Username:  user.Username,
 		Email:     string(user.Email),
 		Role:      user.RoleName.String,
-		TokenType: "refresh",
+		TokenType: pkg.RefreshToken,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(expiresAt),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
 			NotBefore: jwt.NewNumericDate(time.Now()),
-			Issuer:    "ims_be_v1",
+			Issuer:    pkg.JWTIssuer,
 			Subject:   user.ID.String(),
 		},
 	}
@@ -186,7 +186,7 @@ func (s *service) RefreshToken(req RefreshRequest) (*LoginResponse, error) {
 		return nil, err
 	}
 
-	if claims.TokenType != "refresh" {
+	if claims.TokenType != pkg.RefreshToken {
 		return nil, errors.New("invalid token type")
 	}
 
