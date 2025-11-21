@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS users (
 
     auth_provider VARCHAR(50),
     oauth_id VARCHAR(255),
+    auth_method VARCHAR(50) DEFAULT 'email' CHECK (auth_method IN ('email', 'google')),
 
     password_hash VARCHAR(255),
     password_changed_at TIMESTAMPTZ,
@@ -38,18 +39,3 @@ CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
 CREATE INDEX IF NOT EXISTS idx_users_email_hash ON users(email_hash);
 CREATE INDEX IF NOT EXISTS idx_users_status ON users(status);
 CREATE INDEX IF NOT EXISTS idx_users_role_id ON users(role_id);
-
-CREATE TABLE IF NOT EXISTS officials (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-
-    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    department TEXT,
-    job_title TEXT,
-
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    created_by UUID REFERENCES users(id),
-    last_updated_at TIMESTAMPTZ,
-    last_updated_by UUID REFERENCES users(id),
-    deleted_at TIMESTAMPTZ,
-    deleted_by UUID REFERENCES users(id)
-);

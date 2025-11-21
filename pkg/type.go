@@ -27,8 +27,8 @@ const (
 	LogEntityAreas LogType = "areas"
 
 	// JWT
-	AccessTokenName               = "__hk_asid"
-	RefreshTokenName              = "__hk_rsid"
+	AccessTokenName               = "__asid"
+	RefreshTokenName              = "__rsid"
 	MobileKeyName                 = "X-Request-Tag"
 	RefreshToken     JWTTokenType = "refresh"
 	AccessToken      JWTTokenType = "access"

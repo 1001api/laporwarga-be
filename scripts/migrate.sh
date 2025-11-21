@@ -26,6 +26,10 @@ MIGRATION_PATH="internal/database/migrations"
 ACTION=$1
 
 case "$ACTION" in
+  create)
+    echo "Creating migration file..."
+    migrate create -ext sql -dir "${MIGRATION_PATH}" -seq "$2"
+    ;;
   up)
     echo "Applying all 'up' migrations..."
     migrate -database "${DATABASE_URL}" -path "${MIGRATION_PATH}" up

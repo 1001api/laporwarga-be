@@ -88,7 +88,7 @@ func (s *service) InitializeRootUser() error {
 	}
 
 	if username == "" || passwordHash == "" || email == "" || fullname == "" || phoneNumber == "" {
-		return errors.New("ROOT_USERNAME, ROOT_PASSWORD, ROOT_EMAIL, ROOT_FULLNAME, ROOT_PHONE_NUMBER are required")
+		return errors.New("ROOT_USERNAME, ROOT_PASSWORD, ROOT_EMAIL, ROOT_FULLNAME, ROOT_PHONE are required")
 	}
 
 	// check if role admin exists

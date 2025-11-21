@@ -117,7 +117,7 @@ func Routing(r fiber.Router, db *pgxpool.Pool) {
 
 func JWTMiddleware(authService auth.AuthService) fiber.Handler {
 	return func(c *fiber.Ctx) error {
-		accessToken := c.Cookies(pkg.AccessTokenName)
+		accessToken := c.Get(pkg.AccessTokenName)
 
 		if accessToken == "" {
 			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
