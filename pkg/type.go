@@ -22,9 +22,11 @@ const (
 	LogTypeRestore LogType = "restore"
 
 	// Log Entiry
-	LogEntityUsers LogType = "users"
-	LogEntityRoles LogType = "roles"
-	LogEntityAreas LogType = "areas"
+	LogEntityUsers      LogType = "users"
+	LogEntityRoles      LogType = "roles"
+	LogEntityAreas      LogType = "areas"
+	LogEntityCategories LogType = "categories"
+	LogEntityReports    LogType = "reports"
 
 	// JWT
 	AccessTokenName               = "__asid"
@@ -41,4 +43,22 @@ const (
 	SimpleAreaTolerance AreaToleranceValue = 0.001
 	DetailAreaTolerance AreaToleranceValue = 0.0001
 	OffAreaTolerance    AreaToleranceValue = -99
+
+	// Error
+	ErrExist  = "exist"
+	ErrNoRows = "no rows in result set"
 )
+
+type Meta struct {
+	Duration string `json:"duration"`
+}
+
+type SuccessResponse struct {
+	Data interface{} `json:"data"`
+	Meta Meta        `json:"meta"`
+}
+
+type ErrorResponse struct {
+	Error interface{} `json:"error"`
+	Meta  Meta        `json:"meta"`
+}

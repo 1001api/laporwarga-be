@@ -5,6 +5,7 @@ import (
 	"hubku/lapor_warga_be_v2/internal/modules/areas"
 	"hubku/lapor_warga_be_v2/internal/modules/auditlogs"
 	"hubku/lapor_warga_be_v2/internal/modules/auth"
+	"hubku/lapor_warga_be_v2/internal/modules/categories"
 	userroles "hubku/lapor_warga_be_v2/internal/modules/user_roles"
 	"hubku/lapor_warga_be_v2/internal/modules/users"
 	"hubku/lapor_warga_be_v2/pkg"
@@ -30,18 +31,21 @@ func Routing(r fiber.Router, db *pgxpool.Pool) {
 	roleRepo := userroles.NewUserRolesRepository(db)
 	logRepo := auditlogs.NewLogsRepository(db)
 	areaRepo := areas.NewAreaRepository(db)
+	categoryRepo := categories.NewCategoriesRepository(db)
 
 	logService := auditlogs.NewLogsService(logRepo)
 	userRolesService := userroles.NewUserRolesService(roleRepo, logService)
 	userService := users.NewUserService(userRepo, userRolesService, logService, encKey)
 	authService := auth.NewAuthService(userService, logService, encKey)
 	areaService := areas.NewAreaService(logService, areaRepo)
+	categoryService := categories.NewCategoriesService(categoryRepo, logService)
 
 	logsController := controllers.NewLogsController(logService)
 	userController := controllers.NewUserController(userService, validator)
 	authController := controllers.NewAuthController(authService, validator)
 	userRolesController := controllers.NewUserRolesController(userRolesService, validator)
 	areaController := controllers.NewAreasController(areaService, validator)
+	categoryController := controllers.NewCategoriesController(categoryService, validator)
 
 	// Initialize root user
 	if err := userService.InitializeRootUser(); err != nil {
@@ -93,6 +97,22 @@ func Routing(r fiber.Router, db *pgxpool.Pool) {
 		areasRoutes.Get("/list", areaController.GetAreas)
 		areasRoutes.Get("/boundary/:id", areaController.GetAreaBoundary)
 		areasRoutes.Patch("/toggle-status/:id", areaController.ToggleAreaActiveStatus)
+	}
+
+	publicCategoriesRoutes := versioning.Group("/categories", JWTMiddleware(authService))
+	{
+		publicCategoriesRoutes.Get("/list", categoryController.GetCategories)
+	}
+
+	adminCategoriesRoutes := versioning.Group("/categories/admin", JWTMiddleware(authService), RoleMiddleware(string(pkg.RoleAdmin)))
+	{
+		adminCategoriesRoutes.Post("/create", categoryController.CreateCategory)
+		adminCategoriesRoutes.Get("/search", categoryController.SearchCategories)
+		adminCategoriesRoutes.Get("/slug/:slug", categoryController.GetCategoryBySlug)
+		adminCategoriesRoutes.Post("/toggle-status/:id", categoryController.ToggleCategoryActiveStatus)
+		adminCategoriesRoutes.Get("/:id", categoryController.GetCategoryById)
+		adminCategoriesRoutes.Patch("/:id", categoryController.UpdateCategory)
+		adminCategoriesRoutes.Delete("/:id", categoryController.DeleteCategory)
 	}
 
 	/**

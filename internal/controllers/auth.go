@@ -199,7 +199,7 @@ func (c *AuthController) Login(ctx *fiber.Ctx) error {
 
 	return ctx.JSON(
 		fiber.Map{
-			"data": "success",
+			"data": resp,
 			"meta": fiber.Map{
 				"duration": time.Since(startTime).String(),
 			},
